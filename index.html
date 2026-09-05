@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0D0D0D">
+  <meta name="description" content="RAAZ - Private messaging with status, voice & calls">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="RAAZ">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- SPLASH SCREEN -->
+  <div id="splashScreen">
+    <div class="splash-logo">RAAZ</div>
+    <div class="splash-tagline">Your chats is fully RAAZ</div>
+    <div class="spinner" style="margin-top: 20px;"></div>
+  </div>
+
+  <!-- AUTH SCREEN -->
+  <div id="authScreen" class="screen hidden">
+    <div class="auth-container">
+      <div class="auth-logo">
+        <h1>RAAZ</h1>
+        <p>Private Messenger</p>
+      </div>
+      <div class="auth-form">
+        <input type="text" id="nameInput" placeholder="Apna naam daalo">
+        <input type="text" id="usernameInput" placeholder="Username (space nahi)">
+        <input type="email" id="emailInput" placeholder="Email address">
+        <input type="password" id="passInput" placeholder="Password">
+        <div class="error" id="authError"></div>
+        <button class="btn-primary" id="signupBtn">📝 Sign Up</button>
+        <div class="divider"><span>ya</span></div>
+        <button class="btn-secondary" id="loginBtn">🔑 Login Karo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HOME SCREEN -->
+  <div id="homeScreen" class="screen hidden">
+    <div class="header">
+      <h1>RAAZ</h1>
+      <div class="header-btns">
+        <button class="header-btn" id="themeToggle" title="Theme">🌙</button>
+        <button class="header-btn" id="requestsBtn" title="Requests">📥<span class="badge hidden" id="requestsBadge">0</span></button>
+        <button class="header-btn" id="profileBtn" title="Profile">👤</button>
+      </div>
+    </div>
+    <div class="home-content">
+      <div class="search-section">
+        <div style="position: relative;">
+          <span class="search-icon">🔍</span>
+          <input type="text" class="search-box" id="friendUsernameInput" placeholder="Friend ka username search karo...">
+        </div>
+      </div>
+
+      <div class="status-section">
+        <div class="status-section-title">📸 Status</div>
+        <div class="status-list" id="statusList">
+          <div class="status-item" id="myStatusItem">
+            <div class="status-avatar add" id="myStatusAvatar">+</div>
+            <div class="status-name">My Status</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="searchResultsList" class="hidden"></div>
+      <div id="chatListWrapper">
+        <div id="primarySectionLabel" class="status-section-title">💬 Chats</div>
+        <div id="chatListPrimary" class="chat-list"></div>
+        <div id="secondarySectionLabel" class="status-section-title hidden">📂 Secondary</div>
+        <div id="chatListSecondary" class="chat-list"></div>
+        <div id="chatListEmpty" class="empty-state">
+          <div class="empty-state-icon">💬</div>
+          <p>Abhi koi chat nahi hai</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="bottom-nav">
+      <button class="nav-item active" id="navChats"><span class="nav-icon">💬</span><span>Chats</span></button>
+      <button class="nav-item" id="navSearch"><span class="nav-icon">🔍</span><span>Search</span></button>
+      <button class="nav-item" id="navFeed"><span class="nav-icon">📸</span><span>Feed</span></button>
+      <button class="nav-item" id="navCalls"><span class="nav-icon">📞</span><span>Calls</span></button>
+      <button class="nav-item" id="navProfile"><span class="nav-icon">👤</span><span>Profile</span></button>
+    </div>
+  </div>
+
+  <!-- SEARCH SCREEN -->
+  <div id="searchScreen" class="screen hidden">
+    <div class="header">
+      <button class="header-btn" id="searchBackBtn">←</button>
+      <h1>🔍 Search</h1>
+    </div>
+    <div class="search-content">
+      <div class="search-section">
+        <div style="position: relative;">
+          <span class="search-icon">🔍</span>
+          <input type="text" class="search-box" id="searchUsernameInput" placeholder="Username se search karo...">
+        </div>
+      </div>
+      <div id="searchUserResults" class="search-user-results"></div>
+    </div>
+  </div>
+
+  <!-- CHAT SCREEN -->
+  <div id="chatScreen" class="screen hidden">
+    <div class="chat-header">
+      <button class="header-btn" id="backBtn">←</button>
+      <div class="chat-header-avatar" id="chatHeaderAvatar">?</div>
+      <div class="chat-header-info">
+        <div class="chat-header-name" id="friendNameDisplay">Friend</div>
+        <div class="chat-header-status" id="friendStatus">Offline</div>
+      </div>
+      <button class="header-btn" id="voiceCallBtn" title="Voice Call">📞</button>
+      <button class="header-btn" id="chatMenuBtn" title="Menu">⋮</button>
+    </div>
+    <div class="chat-messages" id="messages"></div>
+    <div class="chat-input-bar">
+      <button class="attach-btn" id="attachBtn" title="Photo/Video">📷</button>
+      <input type="text" class="chat-input" id="msgInput" placeholder="Message likho...">
+      <button class="mic-btn" id="micBtn" title="Voice Message">🎤</button>
+      <button class="send-btn" id="sendBtn" title="Send">➤</button>
+      <input type="file" id="chatPhotoInput" accept="image/*" style="display:none;">
+      <input type="file" id="chatVideoInput" accept="video/*" style="display:none;">
+    </div>
+  </div>
+
+  <!-- POSTS / FEED SCREEN -->
+  <div id="feedScreen" class="screen hidden">
+    <div class="header">
+      <button class="header-btn" id="feedBackBtn">←</button>
+      <h1>📸 Feed</h1>
+      <button class="header-btn" id="createPostBtn">➕</button>
+    </div>
+    <div class="feed-content" id="feedContent">
+      <div class="empty-state">
+        <div class="empty-state-icon">📸</div>
+        <p>Abhi koi post nahi hai</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- CREATE POST MODAL -->
+  <div id="createPostModal" class="hidden" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:1000; display:flex; align-items:center; justify-content:center;">
+    <div style="background:#1A1A1A; border-radius:20px; padding:20px; width:90%; max-width:400px;">
+      <h3 style="margin-bottom:15px;">➕ Naya Post</h3>
+      <textarea id="postCaptionInput" placeholder="Caption likho..." style="width:100%; padding:12px; border-radius:10px; border:1px solid #333; background:#242424; color:#fff; resize:none; min-height:80px; margin-bottom:10px;"></textarea>
+      <div style="display:flex; gap:10px; margin-bottom:15px;">
+        <button class="btn-primary" id="postPhotoBtn" style="flex:1;">📷 Photo</button>
+        <button class="btn-secondary" id="postVideoBtn" style="flex:1;">🎥 Video</button>
+      </div>
+      <input type="file" id="postPhotoInput" accept="image/*" style="display:none;">
+      <input type="file" id="postVideoInput" accept="video/*" style="display:none;">
+      <button class="btn-primary" id="publishPostBtn" style="width:100%;">Post Karo</button>
+      <button class="btn-secondary" id="cancelPostBtn" style="width:100%; margin-top:10px;">Cancel</button>
+    </div>
+  </div>
+
+  <!-- CALL SCREEN -->
+  <div id="callScreen" class="call-overlay hidden">
+    <div class="call-avatar" id="callAvatar">?</div>
+    <div class="call-name" id="callName">Calling...</div>
+    <div class="call-status" id="callStatus">Call connecting...</div>
+    <div class="call-timer" id="callTimer">00:00</div>
+    <div class="call-controls">
+      <button class="call-btn" id="muteBtn">🔊</button>
+      <button class="call-btn end" id="endCallBtn">📞</button>
+      <button class="call-btn" id="speakerBtn">🔉</button>
+    </div>
+  </div>
+
+  <!-- PROFILE SCREEN -->
+  <div id="profileScreen" class="screen hidden">
+    <div class="header">
+      <button class="header-btn" id="profileBackBtn">←</button>
+      <h1>Profile</h1>
+      <button class="header-btn" id="blockedListBtn" title="Blocked">🚫</button>
+    </div>
+    <div class="profile-body">
+      <div class="profile-avatar-large" id="profileAvatar">?</div>
+      <button class="btn-secondary" id="uploadPhotoBtn" style="margin-top:10px; font-size:12px; padding:5px 12px;">📷 Photo Change</button>
+      <input type="file" id="profilePhotoInput" accept="image/*" style="display:none;">
+      <div class="profile-name" id="profileName">Naam</div>
+      <div class="profile-username" id="profileUsername">@username</div>
+      <div class="profile-stats">
+        <div class="stat-item"><div class="stat-value" id="statsChats">0</div><div class="stat-label">Chats</div></div>
+        <div class="stat-item"><div class="stat-value" id="statsFollowers">0</div><div class="stat-label">Followers</div></div>
+        <div class="stat-item"><div class="stat-value" id="statsFollowing">0</div><div class="stat-label">Following</div></div>
+      </div>
+      <div class="profile-section">
+        <div class="profile-section-title">📝 Bio</div>
+        <div class="profile-section-content" id="bioDisplay">Bio nahi likha hai</div>
+        <button class="btn-secondary" id="editBioBtn" style="margin-top:10px;">✏️ Edit Bio</button>
+        <div id="editBioBox" class="hidden" style="margin-top:15px;">
+          <textarea id="newBioInput" rows="3" style="width:100%; padding:10px; border-radius:8px; border:1px solid #333; background:#242424; color:#fff; resize:none;"></textarea>
+          <button class="btn-primary" id="saveBioBtn" style="margin-top:10px; width:100%;">Save</button>
+        </div>
+      </div>
+      <div class="profile-section">
+        <div class="profile-section-title">📧 Email</div>
+        <div class="profile-section-content" id="profileEmail">email@example.com</div>
+      </div>
+      <div class="profile-section">
+        <div class="profile-section-title">📱 Share App</div>
+        <div style="text-align:center;">
+          <div class="qr-container" id="qrcodeBox" style="background:white; border-radius:12px; padding:15px; display:inline-block;"></div>
+          <button class="btn-secondary" id="shareAppBtn" style="width:100%; margin-top:15px;">📤 Share App</button>
+        </div>
+      </div>
+      <div class="profile-section">
+        <a href="privacy.html" style="color:#888; font-size:12px; display:block; text-align:center;">Privacy Policy</a>
+        <button class="btn-secondary" id="logoutBtn" style="width:100%; margin-top:15px; color:var(--red); border-color:var(--red);">🚪 Logout</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATUS VIEW SCREEN -->
+  <div id="statusViewScreen" class="hidden">
+    <div class="status-view-content">
+      <div class="status-image" id="statusImage"></div>
+      <div class="status-text" id="statusText"></div>
+      <div style="text-align:center; padding:20px;">
+        <button class="btn-primary" id="closeStatusBtn" style="width:100%; max-width:300px;">✖ Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATUS CREATE MODAL -->
+  <div id="statusCreateModal" class="hidden" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:1000; display:flex; align-items:center; justify-content:center;">
+    <div style="background:#1A1A1A; border-radius:20px; padding:20px; width:90%; max-width:400px;">
+      <h3 style="margin-bottom:15px;">📸 Naya Status</h3>
+      <textarea id="statusTextInput" placeholder="Status likho..." style="width:100%; padding:12px; border-radius:10px; border:1px solid #333; background:#242424; color:#fff; resize:none; min-height:100px; margin-bottom:10px;"></textarea>
+      <div style="display:flex; gap:10px; margin-bottom:15px;">
+        <button class="btn-primary" id="statusPhotoBtn" style="flex:1;">📷 Photo</button>
+        <button class="btn-secondary" id="statusTextBtn" style="flex:1;">✍️ Text</button>
+      </div>
+      <input type="file" id="statusPhotoInput" accept="image/*" style="display:none;">
+      <button class="btn-primary" id="postStatusBtn" style="width:100%;">Post Karo</button>
+      <button class="btn-secondary" id="cancelStatusBtn" style="width:100%; margin-top:10px;">Cancel</button>
+    </div>
+  </div>
+
+  <!-- RECORDING INDICATOR -->
+  <div id="recordingIndicator" class="recording-indicator hidden">
+    <div class="recording-mic">🎤</div>
+    <div class="recording-timer" id="recordingTimer">0:00</div>
+    <div class="recording-text">Recording...</div>
+  </div>
+
+  <!-- MENU OVERLAY -->
+  <div class="menu-overlay" id="chatItemMenuOverlay">
+    <div class="menu-sheet">
+      <button class="menu-item" id="moveCategoryBtn"><span class="menu-item-icon">📂</span><span>Category Badlo</span></button>
+      <button class="menu-item" id="blockFromMenuBtn"><span class="menu-item-icon">🚫</span><span>Block Karo</span></button>
+      <button class="menu-item" id="deleteChatBtn"><span class="menu-item-icon">🗑️</span><span>Chat Delete Karo</span></button>
+      <button class="menu-item danger" id="closeMenuBtn"><span class="menu-item-icon">✖</span><span>Cancel</span></button>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div class="toast" id="toast"></div>
+
+  <!-- INSTALL PROMPT -->
+  <div class="install-prompt hidden" id="installPrompt">
+    <span>📱 RAAZ App Install Karo</span>
+    <button id="installBtn">Install</button>
+    <button class="dismiss" id="dismissInstallBtn">✖</button>
+  </div>
+
+  <!-- FIREBASE SCRIPTS (COMPAT) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <!-- PERMISSION ASK SCRIPT -->
+  <script>
+    async function askPermissions() {
+      try {
+        if (window.Notification && Notification.permission === 'default') {
+          await Notification.requestPermission();
+        }
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
+      } catch (err) {
+        console.log('Permission error:', err.message);
+      }
+    }
+    
+    window.addEventListener('load', () => {
+      setTimeout(askPermissions, 3000);
+    });
+  </script>
+
+  <script src="firebase-config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
