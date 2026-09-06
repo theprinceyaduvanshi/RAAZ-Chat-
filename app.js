@@ -20,6 +20,7 @@ const state = {
   audioChunks: [],
   recordingTimer: null,
   pendingStatusPhoto: null,
+  pendingStatusVideo: null,
   pendingPostPhoto: null,
   pendingPostVideo: null,
   deferredPrompt: null,
@@ -91,12 +92,16 @@ const elements = {
   statusViewScreen: document.getElementById('statusViewScreen'),
   statusImage: document.getElementById('statusImage'),
   statusText: document.getElementById('statusText'),
+  statusTime: document.getElementById('statusTime'),
+  statusViews: document.getElementById('statusViews'),
   closeStatusBtn: document.getElementById('closeStatusBtn'),
   statusCreateModal: document.getElementById('statusCreateModal'),
   statusTextInput: document.getElementById('statusTextInput'),
   statusPhotoBtn: document.getElementById('statusPhotoBtn'),
+  statusVideoBtn: document.getElementById('statusVideoBtn'),
   statusTextBtn: document.getElementById('statusTextBtn'),
   statusPhotoInput: document.getElementById('statusPhotoInput'),
+  statusVideoInput: document.getElementById('statusVideoInput'),
   postStatusBtn: document.getElementById('postStatusBtn'),
   cancelStatusBtn: document.getElementById('cancelStatusBtn'),
   callScreen: document.getElementById('callScreen'),
@@ -132,7 +137,13 @@ const elements = {
   publishPostBtn: document.getElementById('publishPostBtn'),
   cancelPostBtn: document.getElementById('cancelPostBtn'),
   uploadPhotoBtn: document.getElementById('uploadPhotoBtn'),
-  profilePhotoInput: document.getElementById('profilePhotoInput')
+  profilePhotoInput: document.getElementById('profilePhotoInput'),
+  followersScreen: document.getElementById('followersScreen'),
+  followersBackBtn: document.getElementById('followersBackBtn'),
+  followersList: document.getElementById('followersList'),
+  followingScreen: document.getElementById('followingScreen'),
+  followingBackBtn: document.getElementById('followingBackBtn'),
+  followingList: document.getElementById('followingList')
 };
 
 // ================= INITIALIZATION =================
@@ -250,7 +261,10 @@ function setupEventListeners() {
   elements.myStatusItem.addEventListener('click', openMyStatus);
   elements.closeStatusBtn.addEventListener('click', closeStatusView);
   elements.statusPhotoBtn.addEventListener('click', () => elements.statusPhotoInput.click());
+  elements.statusVideoBtn.addEventListener('click', () => elements.statusVideoInput.click());
+  elements.statusTextBtn.addEventListener('click', () => elements.statusTextInput.focus());
   elements.statusPhotoInput.addEventListener('change', handleStatusPhoto);
+  elements.statusVideoInput.addEventListener('change', handleStatusVideo);
   elements.postStatusBtn.addEventListener('click', postStatus);
   elements.cancelStatusBtn.addEventListener('click', () => elements.statusCreateModal.classList.add('hidden'));
   elements.endCallBtn.addEventListener('click', endCall);
@@ -270,11 +284,17 @@ function setupEventListeners() {
   // Profile Photo
   elements.uploadPhotoBtn.addEventListener('click', () => elements.profilePhotoInput.click());
   elements.profilePhotoInput.addEventListener('change', handleProfilePhoto);
+  
+  // Followers / Following
+  elements.followersStatItem.addEventListener('click', () => showFollowersScreen());
+  elements.followingStatItem.addEventListener('click', () => showFollowingScreen());
+  elements.followersBackBtn.addEventListener('click', () => showScreen(elements.profile));
+  elements.followingBackBtn.addEventListener('click', () => showScreen(elements.profile));
 }
 
 // ================= NAVIGATION =================
 function showScreen(screen) {
-  [elements.auth, elements.home, elements.search, elements.chat, elements.profile, elements.feed, elements.callScreen].forEach(s => s.classList.add('hidden'));
+  [elements.auth, elements.home, elements.search, elements.chat, elements.profile, elements.feed, elements.followersScreen, elements.followingScreen].forEach(s => s.classList.add('hidden'));
   screen.classList.remove('hidden');
 }
 
@@ -577,7 +597,7 @@ function handleVideoUpload(e) {
   const reader = new FileReader();
   reader.onload = (event) => {
     const videoBase64 = event.target.result;
-    if (videoBase64.length > 3000000) { showToast('Video bahut badi hai! (Max 3MB)', 'error'); return; }
+    if (videoBase64.length > 200 * 1024 * 1024) { showToast('Video 200MB se badi hai!', 'error'); return; }
     const myUid = firebase.auth().currentUser.uid;
     db.collection('chats').doc(state.currentChatId).collection('messages').add({ videoBase64, sender: state.currentUserName, uid: myUid, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
     updateChatListPreview('Video', 'video');
@@ -807,6 +827,11 @@ function renderMyStatus(snapshot) {
       elements.myStatusAvatar.style.backgroundSize = 'cover';
       elements.myStatusAvatar.style.backgroundPosition = 'center';
       elements.myStatusAvatar.innerHTML = '';
+    } else if (latestStatus.videoBase64) {
+      elements.myStatusAvatar.style.backgroundImage = `url(${latestStatus.videoBase64})`;
+      elements.myStatusAvatar.style.backgroundSize = 'cover';
+      elements.myStatusAvatar.style.backgroundPosition = 'center';
+      elements.myStatusAvatar.innerHTML = '';
     } else { elements.myStatusAvatar.style.backgroundImage = 'none'; elements.myStatusAvatar.innerHTML = '📸'; }
   } else { elements.myStatusAvatar.style.backgroundImage = 'none'; elements.myStatusAvatar.innerHTML = '+'; }
 }
@@ -835,8 +860,13 @@ function openMyStatus() {
 function viewMyStatus(statusData) {
   elements.statusViewScreen.classList.remove('hidden');
   if (statusData.imageBase64) { elements.statusImage.innerHTML = `<img src="${statusData.imageBase64}" style="width:100%; height:100%; object-fit:contain;">`; }
+  else if (statusData.videoBase64) { elements.statusImage.innerHTML = `<video src="${statusData.videoBase64}" style="width:100%; height:100%; object-fit:contain;" controls autoplay></video>`; }
   else { elements.statusImage.innerHTML = ''; }
-  elements.statusText.textContent = statusData.text || 'Status khali hai';
+  elements.statusText.textContent = statusData.text || '';
+  const time = statusData.createdAt ? formatTime(statusData.createdAt) : '';
+  elements.statusTime.textContent = time;
+  const views = statusData.views ? statusData.views : 0;
+  elements.statusViews.textContent = views + ' Views';
 }
 
 function viewStatus(userUid) {
@@ -845,8 +875,13 @@ function viewStatus(userUid) {
     const statusData = snapshot.docs[0].data();
     elements.statusViewScreen.classList.remove('hidden');
     if (statusData.imageBase64) { elements.statusImage.innerHTML = `<img src="${statusData.imageBase64}" style="width:100%; height:100%; object-fit:contain;">`; }
+    else if (statusData.videoBase64) { elements.statusImage.innerHTML = `<video src="${statusData.videoBase64}" style="width:100%; height:100%; object-fit:contain;" controls autoplay></video>`; }
     else { elements.statusImage.innerHTML = ''; }
     elements.statusText.textContent = statusData.text || '';
+    const time = statusData.createdAt ? formatTime(statusData.createdAt) : '';
+    elements.statusTime.textContent = time;
+    const views = statusData.views ? statusData.views : 0;
+    elements.statusViews.textContent = views + ' Views';
   });
 }
 
@@ -876,14 +911,30 @@ function handleStatusPhoto(e) {
   reader.readAsDataURL(file);
 }
 
+function handleStatusVideo(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    const videoBase64 = event.target.result;
+    if (videoBase64.length > 200 * 1024 * 1024) { showToast('Video 200MB se badi hai!', 'error'); return; }
+    state.pendingStatusVideo = videoBase64;
+    elements.statusTextInput.placeholder = 'Video ke saath status likho...';
+    showToast('Video select ho gayi! ✅', 'success');
+  };
+  reader.readAsDataURL(file);
+}
+
 async function postStatus() {
   const text = elements.statusTextInput.value.trim();
   const photo = state.pendingStatusPhoto || null;
-  if (!text && !photo) { showToast('Status khali hai!', 'error'); return; }
+  const video = state.pendingStatusVideo || null;
+  if (!text && !photo && !video) { showToast('Status khali hai!', 'error'); return; }
   const uid = firebase.auth().currentUser.uid;
-  await db.collection('users').doc(uid).collection('status').add({ text, imageBase64: photo, name: state.currentUserName, createdAt: firebase.firestore.FieldValue.serverTimestamp(), expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) });
+  await db.collection('users').doc(uid).collection('status').add({ text, imageBase64: photo, videoBase64: video, name: state.currentUserName, createdAt: firebase.firestore.FieldValue.serverTimestamp(), expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) });
   elements.statusTextInput.value = '';
   state.pendingStatusPhoto = null;
+  state.pendingStatusVideo = null;
   elements.statusCreateModal.classList.add('hidden');
   showToast('Status post ho gaya! 📸', 'success');
 }
@@ -988,6 +1039,39 @@ async function unfollowUser(targetUid) {
   showToast('Unfollow kar diya', 'info');
 }
 
+// ================= FOLLOWERS / FOLLOWING SCREENS =================
+async function showFollowersScreen() {
+  const myUid = firebase.auth().currentUser.uid;
+  elements.followersList.innerHTML = '';
+  db.collection('users').doc(myUid).collection('followers').onSnapshot(snapshot => {
+    elements.followersList.innerHTML = '';
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      const item = document.createElement('div');
+      item.className = 'chat-item';
+      item.innerHTML = `<div class="chat-avatar">${data.name ? data.name.charAt(0).toUpperCase() : '?'}</div><div class="chat-info"><div class="chat-name">${data.name || 'User'}</div></div>`;
+      elements.followersList.appendChild(item);
+    });
+  });
+  showScreen(elements.followersScreen);
+}
+
+async function showFollowingScreen() {
+  const myUid = firebase.auth().currentUser.uid;
+  elements.followingList.innerHTML = '';
+  db.collection('users').doc(myUid).collection('following').onSnapshot(snapshot => {
+    elements.followingList.innerHTML = '';
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      const item = document.createElement('div');
+      item.className = 'chat-item';
+      item.innerHTML = `<div class="chat-avatar">${data.name ? data.name.charAt(0).toUpperCase() : '?'}</div><div class="chat-info"><div class="chat-name">${data.name || 'User'}</div></div>`;
+      elements.followingList.appendChild(item);
+    });
+  });
+  showScreen(elements.followingScreen);
+}
+
 // ================= FEED / POSTS =================
 function listenForFeed() {
   const uid = firebase.auth().currentUser.uid;
@@ -1045,7 +1129,7 @@ function handlePostVideo(e) {
   const reader = new FileReader();
   reader.onload = (event) => {
     const videoBase64 = event.target.result;
-    if (videoBase64.length > 3000000) { showToast('Video bahut badi hai! (Max 3MB)', 'error'); return; }
+    if (videoBase64.length > 200 * 1024 * 1024) { showToast('Video 200MB se badi hai!', 'error'); return; }
     state.pendingPostVideo = videoBase64;
     elements.postCaptionInput.placeholder = 'Video ke saath caption likho...';
     showToast('Video select ho gayi! ✅', 'success');

@@ -42,7 +42,7 @@
     </div>
   </div>
 
-  <!-- HOME SCREEN -->
+  <!-- HOME / FEED SCREEN -->
   <div id="homeScreen" class="screen hidden">
     <div class="header">
       <h1>RAAZ</h1>
@@ -52,43 +52,22 @@
         <button class="header-btn" id="profileBtn" title="Profile">👤</button>
       </div>
     </div>
-    <div class="home-content">
-      <div class="search-section">
-        <div style="position: relative;">
-          <span class="search-icon">🔍</span>
-          <input type="text" class="search-box" id="friendUsernameInput" placeholder="Friend ka username search karo...">
-        </div>
-      </div>
 
-      <div class="status-section">
-        <div class="status-section-title">📸 Status</div>
-        <div class="status-list" id="statusList">
-          <div class="status-item" id="myStatusItem">
-            <div class="status-avatar add" id="myStatusAvatar">+</div>
-            <div class="status-name">My Status</div>
-          </div>
-        </div>
-      </div>
-
-      <div id="searchResultsList" class="hidden"></div>
-      <div id="chatListWrapper">
-        <div id="primarySectionLabel" class="status-section-title">💬 Chats</div>
-        <div id="chatListPrimary" class="chat-list"></div>
-        <div id="secondarySectionLabel" class="status-section-title hidden">📂 Secondary</div>
-        <div id="chatListSecondary" class="chat-list"></div>
-        <div id="chatListEmpty" class="empty-state">
-          <div class="empty-state-icon">💬</div>
-          <p>Abhi koi chat nahi hai</p>
+    <div class="status-section">
+      <div class="status-section-title">📸 Status</div>
+      <div class="status-list" id="statusList">
+        <div class="status-item" id="myStatusItem">
+          <div class="status-avatar add" id="myStatusAvatar">+</div>
+          <div class="status-name">My Status</div>
         </div>
       </div>
     </div>
 
-    <div class="bottom-nav">
-      <button class="nav-item active" id="navChats"><span class="nav-icon">💬</span><span>Chats</span></button>
-      <button class="nav-item" id="navSearch"><span class="nav-icon">🔍</span><span>Search</span></button>
-      <button class="nav-item" id="navFeed"><span class="nav-icon">📸</span><span>Feed</span></button>
-      <button class="nav-item" id="navCalls"><span class="nav-icon">📞</span><span>Calls</span></button>
-      <button class="nav-item" id="navProfile"><span class="nav-icon">👤</span><span>Profile</span></button>
+    <div class="feed-section" id="feedSection">
+      <div class="empty-state">
+        <div class="empty-state-icon">📸</div>
+        <p>Abhi koi post nahi hai</p>
+      </div>
     </div>
   </div>
 
@@ -132,50 +111,6 @@
     </div>
   </div>
 
-  <!-- POSTS / FEED SCREEN -->
-  <div id="feedScreen" class="screen hidden">
-    <div class="header">
-      <button class="header-btn" id="feedBackBtn">←</button>
-      <h1>📸 Feed</h1>
-      <button class="header-btn" id="createPostBtn">➕</button>
-    </div>
-    <div class="feed-content" id="feedContent">
-      <div class="empty-state">
-        <div class="empty-state-icon">📸</div>
-        <p>Abhi koi post nahi hai</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- CREATE POST MODAL -->
-  <div id="createPostModal" class="hidden" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:1000; display:flex; align-items:center; justify-content:center;">
-    <div style="background:#1A1A1A; border-radius:20px; padding:20px; width:90%; max-width:400px;">
-      <h3 style="margin-bottom:15px;">➕ Naya Post</h3>
-      <textarea id="postCaptionInput" placeholder="Caption likho..." style="width:100%; padding:12px; border-radius:10px; border:1px solid #333; background:#242424; color:#fff; resize:none; min-height:80px; margin-bottom:10px;"></textarea>
-      <div style="display:flex; gap:10px; margin-bottom:15px;">
-        <button class="btn-primary" id="postPhotoBtn" style="flex:1;">📷 Photo</button>
-        <button class="btn-secondary" id="postVideoBtn" style="flex:1;">🎥 Video</button>
-      </div>
-      <input type="file" id="postPhotoInput" accept="image/*" style="display:none;">
-      <input type="file" id="postVideoInput" accept="video/*" style="display:none;">
-      <button class="btn-primary" id="publishPostBtn" style="width:100%;">Post Karo</button>
-      <button class="btn-secondary" id="cancelPostBtn" style="width:100%; margin-top:10px;">Cancel</button>
-    </div>
-  </div>
-
-  <!-- CALL SCREEN -->
-  <div id="callScreen" class="call-overlay hidden">
-    <div class="call-avatar" id="callAvatar">?</div>
-    <div class="call-name" id="callName">Calling...</div>
-    <div class="call-status" id="callStatus">Call connecting...</div>
-    <div class="call-timer" id="callTimer">00:00</div>
-    <div class="call-controls">
-      <button class="call-btn" id="muteBtn">🔊</button>
-      <button class="call-btn end" id="endCallBtn">📞</button>
-      <button class="call-btn" id="speakerBtn">🔉</button>
-    </div>
-  </div>
-
   <!-- PROFILE SCREEN -->
   <div id="profileScreen" class="screen hidden">
     <div class="header">
@@ -190,9 +125,18 @@
       <div class="profile-name" id="profileName">Naam</div>
       <div class="profile-username" id="profileUsername">@username</div>
       <div class="profile-stats">
-        <div class="stat-item"><div class="stat-value" id="statsChats">0</div><div class="stat-label">Chats</div></div>
-        <div class="stat-item"><div class="stat-value" id="statsFollowers">0</div><div class="stat-label">Followers</div></div>
-        <div class="stat-item"><div class="stat-value" id="statsFollowing">0</div><div class="stat-label">Following</div></div>
+        <div class="stat-item">
+          <div class="stat-value" id="statsPosts">0</div>
+          <div class="stat-label">Posts</div>
+        </div>
+        <div class="stat-item" id="followersStatItem">
+          <div class="stat-value" id="statsFollowers">0</div>
+          <div class="stat-label">Followers</div>
+        </div>
+        <div class="stat-item" id="followingStatItem">
+          <div class="stat-value" id="statsFollowing">0</div>
+          <div class="stat-label">Following</div>
+        </div>
       </div>
       <div class="profile-section">
         <div class="profile-section-title">📝 Bio</div>
@@ -221,11 +165,49 @@
     </div>
   </div>
 
+  <!-- FOLLOWERS SCREEN -->
+  <div id="followersScreen" class="screen hidden">
+    <div class="header">
+      <button class="header-btn" id="followersBackBtn">←</button>
+      <h1>Followers</h1>
+    </div>
+    <div class="followers-list" id="followersList"></div>
+  </div>
+
+  <!-- FOLLOWING SCREEN -->
+  <div id="followingScreen" class="screen hidden">
+    <div class="header">
+      <button class="header-btn" id="followingBackBtn">←</button>
+      <h1>Following</h1>
+    </div>
+    <div class="followers-list" id="followingList"></div>
+  </div>
+
+  <!-- CREATE POST MODAL -->
+  <div id="createPostModal" class="hidden" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:1000; display:flex; align-items:center; justify-content:center;">
+    <div style="background:#1A1A1A; border-radius:20px; padding:20px; width:90%; max-width:400px;">
+      <h3 style="margin-bottom:15px;">➕ Naya Post</h3>
+      <textarea id="postCaptionInput" placeholder="Caption likho..." style="width:100%; padding:12px; border-radius:10px; border:1px solid #333; background:#242424; color:#fff; resize:none; min-height:80px; margin-bottom:10px;"></textarea>
+      <div style="display:flex; gap:10px; margin-bottom:15px;">
+        <button class="btn-primary" id="postPhotoBtn" style="flex:1;">📷 Photo</button>
+        <button class="btn-secondary" id="postVideoBtn" style="flex:1;">🎥 Video</button>
+      </div>
+      <input type="file" id="postPhotoInput" accept="image/*" style="display:none;">
+      <input type="file" id="postVideoInput" accept="video/*" style="display:none;">
+      <button class="btn-primary" id="publishPostBtn" style="width:100%;">Post Karo</button>
+      <button class="btn-secondary" id="cancelPostBtn" style="width:100%; margin-top:10px;">Cancel</button>
+    </div>
+  </div>
+
   <!-- STATUS VIEW SCREEN -->
   <div id="statusViewScreen" class="hidden">
     <div class="status-view-content">
       <div class="status-image" id="statusImage"></div>
       <div class="status-text" id="statusText"></div>
+      <div class="status-meta">
+        <span class="status-time" id="statusTime"></span>
+        <span class="status-views" id="statusViews"></span>
+      </div>
       <div style="text-align:center; padding:20px;">
         <button class="btn-primary" id="closeStatusBtn" style="width:100%; max-width:300px;">✖ Close</button>
       </div>
@@ -239,9 +221,11 @@
       <textarea id="statusTextInput" placeholder="Status likho..." style="width:100%; padding:12px; border-radius:10px; border:1px solid #333; background:#242424; color:#fff; resize:none; min-height:100px; margin-bottom:10px;"></textarea>
       <div style="display:flex; gap:10px; margin-bottom:15px;">
         <button class="btn-primary" id="statusPhotoBtn" style="flex:1;">📷 Photo</button>
+        <button class="btn-secondary" id="statusVideoBtn" style="flex:1;">🎥 Video</button>
         <button class="btn-secondary" id="statusTextBtn" style="flex:1;">✍️ Text</button>
       </div>
       <input type="file" id="statusPhotoInput" accept="image/*" style="display:none;">
+      <input type="file" id="statusVideoInput" accept="video/*" style="display:none;">
       <button class="btn-primary" id="postStatusBtn" style="width:100%;">Post Karo</button>
       <button class="btn-secondary" id="cancelStatusBtn" style="width:100%; margin-top:10px;">Cancel</button>
     </div>
@@ -252,6 +236,19 @@
     <div class="recording-mic">🎤</div>
     <div class="recording-timer" id="recordingTimer">0:00</div>
     <div class="recording-text">Recording...</div>
+  </div>
+
+  <!-- CALL SCREEN -->
+  <div id="callScreen" class="call-overlay hidden">
+    <div class="call-avatar" id="callAvatar">?</div>
+    <div class="call-name" id="callName">Calling...</div>
+    <div class="call-status" id="callStatus">Call connecting...</div>
+    <div class="call-timer" id="callTimer">00:00</div>
+    <div class="call-controls">
+      <button class="call-btn" id="muteBtn">🔊</button>
+      <button class="call-btn end" id="endCallBtn">📞</button>
+      <button class="call-btn" id="speakerBtn">🔉</button>
+    </div>
   </div>
 
   <!-- MENU OVERLAY -->

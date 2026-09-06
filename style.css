@@ -321,9 +321,7 @@ body.light-theme .nav-item { color: rgba(0, 0, 0, 0.7); }
 
 .nav-icon { font-size: 22px; }
 
-/* Home */
-.home-content { padding: 20px; padding-bottom: 80px; }
-
+/* Search */
 .search-section { margin-bottom: 20px; }
 
 .search-box {
@@ -353,6 +351,7 @@ body.light-theme .search-box {
   opacity: 0.5;
 }
 
+/* Status */
 .status-section { margin-bottom: 20px; }
 
 .status-section-title {
@@ -400,6 +399,7 @@ body.light-theme .search-box {
 
 .status-name { font-size: 12px; text-align: center; width: 70px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* Chat List */
 .chat-list { display: flex; flex-direction: column; gap: 8px; }
 
 .chat-item {
@@ -469,14 +469,7 @@ body.light-theme .empty-state { color: rgba(0, 0, 0, 0.5); }
 
 .empty-state-icon { font-size: 60px; margin-bottom: 20px; }
 
-/* Search Screen */
-#searchScreen { background: var(--dark); }
-
-.search-content { padding: 20px; }
-
-.search-user-results { margin-top: 15px; }
-
-/* Chat */
+/* Chat Screen */
 #chatScreen { display: flex; flex-direction: column; height: 100vh; background: var(--dark); }
 
 body.light-theme #chatScreen { background: var(--light); }
@@ -695,6 +688,9 @@ body.light-theme .profile-section { background: var(--light-2); }
 
 body.light-theme .profile-section-content { color: rgba(0, 0, 0, 0.8); }
 
+/* Followers / Following */
+.followers-list { padding: 20px; }
+
 /* Menu */
 .menu-overlay {
   position: fixed;
@@ -778,7 +774,7 @@ body.light-theme .menu-item:hover { background: var(--light-3); }
 
 .toast.error { background: linear-gradient(135deg, #5c1e1e, #8a2d2d); color: white; }
 
-/* Status */
+/* Status View */
 #statusViewScreen {
   position: fixed;
   top: 0;
@@ -797,6 +793,12 @@ body.light-theme .menu-item:hover { background: var(--light-3); }
 .status-image { width: 100%; flex: 1; object-fit: contain; background: #000; display: flex; align-items: center; justify-content: center; }
 
 .status-text { padding: 20px; text-align: center; font-size: 18px; color: white; }
+
+.status-meta { text-align: center; padding: 10px; color: rgba(255, 255, 255, 0.7); }
+
+.status-time { font-size: 12px; margin-right: 10px; }
+
+.status-views { font-size: 12px; color: var(--gold); }
 
 /* Recording */
 .recording-indicator {
@@ -967,6 +969,13 @@ body.light-theme .post-card { background: var(--light-2); }
 }
 
 .post-caption { font-size: 14px; line-height: 1.4; }
+
+/* Search Screen */
+#searchScreen { background: var(--dark); }
+
+.search-content { padding: 20px; }
+
+.search-user-results { margin-top: 15px; }
 
 /* QR */
 .qr-container { background: white; border-radius: 16px; padding: 20px; display: inline-block; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3); }
