@@ -177,6 +177,7 @@ let unsubscribeNotifications = null;
 let unsubscribeStories = null;
 let feedCache = [];
 let activeFeedFilter = "all";
+let profilePostCache = [];
 let storyCache = [];
 let currentStoryIndex = 0;
 let storyTimer = null;
@@ -293,18 +294,24 @@ signupBtn.addEventListener("click", async () => {
     return;
   }
 
-  authError.textContent = "Check ho raha hai...";
+  authError.textContent = "Account ban raha hai...";
 
+  let createdUser = null;
   try {
+    // Firestore users collection is readable only after authentication.
+    // Therefore the username check must happen AFTER Firebase Auth signup.
+    const userCredential = await auth.createUserWithEmailAndPassword(email, pass);
+    createdUser = userCredential.user;
+    const uid = createdUser.uid;
+
+    await createdUser.updateProfile({ displayName: name });
+
     const existing = await db.collection("users").where("username", "==", username).get();
     if (!existing.empty) {
+      await createdUser.delete();
       authError.textContent = "Ye username already liya gaya hai, doosra try karo!";
       return;
     }
-
-    const userCredential = await auth.createUserWithEmailAndPassword(email, pass);
-    const uid = userCredential.user.uid;
-    await userCredential.user.updateProfile({ displayName: name });
 
     await db.collection("users").doc(uid).set({
       name: name,
@@ -315,7 +322,12 @@ signupBtn.addEventListener("click", async () => {
 
     authError.textContent = "";
   } catch (err) {
-    authError.textContent = err.message;
+    // If Auth succeeded but the Firestore profile could not be created,
+    // clean up the just-created Auth account so the email is not stranded.
+    if (createdUser && auth.currentUser && auth.currentUser.uid === createdUser.uid) {
+      try { await createdUser.delete(); } catch (_) {}
+    }
+    authError.textContent = err.message || "Account create nahi ho saka.";
   }
 });
 
@@ -337,6 +349,17 @@ function doLogout() {
   stopHeartbeat();
   if (unsubscribeChatList) unsubscribeChatList();
   if (unsubscribeRequestsBadge) unsubscribeRequestsBadge();
+  if (unsubscribeMessages) unsubscribeMessages();
+  if (unsubscribeFriendStatus) unsubscribeFriendStatus();
+  if (unsubscribeChatDoc) unsubscribeChatDoc();
+  if (unsubscribeFeed) unsubscribeFeed();
+  if (unsubscribeStories) unsubscribeStories();
+  if (unsubscribeNotifications) unsubscribeNotifications();
+  if (unsubscribeReels) unsubscribeReels?.();
+  if (unsubscribeGroups) unsubscribeGroups?.();
+  if (unsubscribeNotes) unsubscribeNotes?.();
+  if (window.raazReelObserver) { window.raazReelObserver.disconnect(); window.raazReelObserver = null; }
+  stopAllFriendAvatarWatchers();
   auth.signOut();
 }
 logoutBtn?.addEventListener("click", doLogout);
@@ -445,7 +468,7 @@ function formatPostTime(timestamp) {
 
 function renderFeedFromCache() {
   feedList.innerHTML = "";
-  let posts = [...feedCache];
+  let posts = window.raazProfileOnly ? [...profilePostCache] : [...feedCache];
   if (activeFeedFilter === "following") {
     const following = window.raazFollowingIds || new Set();
     posts = posts.filter(p => following.has(p.data.uid) || p.data.uid === auth.currentUser?.uid);
@@ -518,7 +541,7 @@ async function renderPostCard(postId, data) {
   card.innerHTML = `
     <div class="postHeader">
       <button class="postIdentity">${avatar}<span><strong>${escapeHtml(data.name || "RAAZ User")}</strong><small>@${escapeHtml(data.username || "user")} · ${formatPostTime(data.createdAt)}</small></span></button>
-      ${isMine ? `<button class="postMoreBtn" aria-label="Post options">⋮</button>` : ""}
+      <button class="postMoreBtn" aria-label="Post options">⋮</button>
     </div>
     ${caption}
     ${image}
@@ -542,15 +565,15 @@ async function renderPostCard(postId, data) {
       if (userDoc.exists) openProfileView(data.uid, userDoc.data());
     }
   });
-  if (isMine) card.querySelector(".postMoreBtn").addEventListener("click", async () => {
+  card.querySelector(".postMoreBtn")?.addEventListener("click", async () => {
     await openPostActions(postId, data, card);
   });
-  card.querySelector(".likeBtn").addEventListener("click", () => togglePostLike(postId, card));
-  card.querySelector(".commentBtn").addEventListener("click", () => toggleComments(postId, card));
-  card.querySelector(".saveBtn").addEventListener("click", () => toggleSavePost(postId, card));
-  card.querySelector(".repostBtn")?.addEventListener("click", () => repostPost(postId, data));
+  card.querySelector(".likeBtn").addEventListener("click", () => window.raazSafeAction ? window.raazSafeAction(()=>togglePostLike(postId, card),"Like complete nahi hua.") : togglePostLike(postId, card));
+  card.querySelector(".commentBtn").addEventListener("click", () => window.raazSafeAction ? window.raazSafeAction(()=>toggleComments(postId, card),"Comments load nahi hue.") : toggleComments(postId, card));
+  card.querySelector(".saveBtn").addEventListener("click", () => window.raazSafeAction ? window.raazSafeAction(()=>toggleSavePost(postId, card),"Save complete nahi hua.") : toggleSavePost(postId, card));
+  card.querySelector(".repostBtn")?.addEventListener("click", () => window.raazSafeAction ? window.raazSafeAction(()=>repostPost(postId, data),"Repost complete nahi hua.") : repostPost(postId, data));
   card.querySelector(".shareBtn").addEventListener("click", () => sharePost(postId, data));
-  card.querySelector(".commentComposer button").addEventListener("click", () => addPostComment(postId, card));
+  card.querySelector(".commentComposer button").addEventListener("click", () => window.raazSafeAction ? window.raazSafeAction(()=>addPostComment(postId, card),"Comment send nahi hua.") : addPostComment(postId, card));
   card.querySelector(".commentComposer input").addEventListener("keydown", (e) => { if (e.key === "Enter") addPostComment(postId, card); });
   let lastTap = 0;
   card.querySelector(".postMedia")?.addEventListener("click", () => {
@@ -652,6 +675,8 @@ async function toggleComments(postId, card) {
 
 async function loadPostComments(postId, card) {
   const list = card.querySelector(".commentsList");
+  if(!list) return;
+  try {
   const snap = await db.collection("posts").doc(postId).collection("comments").orderBy("createdAt", "asc").limit(50).get();
   list.innerHTML = snap.empty ? `<div class="noComments">Abhi koi comment nahi.</div>` : "";
   snap.forEach((doc) => {
@@ -661,29 +686,37 @@ async function loadPostComments(postId, card) {
     row.innerHTML = `<strong>@${escapeHtml(d.username || "user")}</strong><span>${escapeHtml(d.text || "")}</span>`;
     list.appendChild(row);
   });
+  } catch(err) {
+    list.innerHTML = `<div class="noComments">${escapeHtml(err?.message || "Comments load nahi hue.")}</div>`;
+  }
 }
 
 async function addPostComment(postId, card) {
   const input = card.querySelector(".commentComposer input");
   const text = input.value.trim();
-  if (!text) return;
-  await db.collection("posts").doc(postId).collection("comments").add({
-    uid: auth.currentUser.uid, name: currentUserName, username: currentUsername, text,
-    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-  });
-  const postSnap = await db.collection("posts").doc(postId).get();
-  const post = postSnap.data() || {};
-  if (post.uid && post.uid !== auth.currentUser.uid) await createNotification(post.uid, { type: "comment", fromUid: auth.currentUser.uid, fromName: currentUserName, fromUsername: currentUsername, postId, text });
-  input.value = "";
-  await loadPostComments(postId, card);
-  const count = await db.collection("posts").doc(postId).collection("comments").get();
-  card.querySelector(".commentCount").textContent = count.size;
+  if (!text || !auth.currentUser) return;
+  try {
+    await db.collection("posts").doc(postId).collection("comments").add({
+      uid: auth.currentUser.uid, name: currentUserName, username: currentUsername, text,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    const postSnap = await db.collection("posts").doc(postId).get();
+    const post = postSnap.data() || {};
+    if (post.uid && post.uid !== auth.currentUser.uid) await createNotification(post.uid, { type: "comment", fromUid: auth.currentUser.uid, fromName: currentUserName, fromUsername: currentUsername, postId, text });
+    input.value = "";
+    await loadPostComments(postId, card);
+    const count = await db.collection("posts").doc(postId).collection("comments").get();
+    card.querySelector(".commentCount").textContent = count.size;
+  } catch(err) {
+    showRaazToast?.(err?.message || "Comment send nahi hua.", "error");
+  }
 }
 
 async function sharePost(postId, data) {
   const shareText = `@${data.username || "user"} ne RAAZ par ek post share ki hai${data.caption ? `: ${data.caption}` : ""}`;
   if (navigator.share) {
-    try { await navigator.share({ title: "RAAZ Post", text: shareText, url: `${location.href.split("#")[0]}#post-${postId}` }); return; } catch (_) {}
+    try { await navigator.share({ title: "RAAZ Post", text: shareText, url: `${location.href.split("#")[0]}#post-${postId}` }); return; }
+    catch (err) { if (err?.name === "AbortError") return; }
   }
   try { await navigator.clipboard.writeText(shareText); alert("Post details copy ho gayi."); }
   catch (_) { alert(shareText); }
@@ -726,7 +759,11 @@ function listenForNotifications() {
         });
         notificationsList.appendChild(row);
       });
-    }, () => {});
+    }, err => {
+      console.error("Notifications listener", err);
+      notificationsList.innerHTML = `<div class="featureEmpty"><h3>Notifications unavailable</h3><p>${escapeHtml(err?.message || "Notifications load nahi hui.")}</p></div>`;
+      notificationsEmpty.classList.add("hidden");
+    });
 }
 
 notificationsBtn.addEventListener("click", () => notificationsOverlay.classList.remove("hidden"));
@@ -734,8 +771,11 @@ closeNotificationsBtn.addEventListener("click", () => notificationsOverlay.class
 notificationsOverlay.addEventListener("click", e => { if (e.target === notificationsOverlay) notificationsOverlay.classList.add("hidden"); });
 markNotificationsBtn.addEventListener("click", async () => {
   if (!auth.currentUser) return;
-  const snap = await db.collection("users").doc(auth.currentUser.uid).collection("notifications").where("read", "==", false).limit(100).get();
-  const batch = db.batch(); snap.forEach(d => batch.set(d.ref, { read: true }, { merge: true })); await batch.commit();
+  try {
+    const snap = await db.collection("users").doc(auth.currentUser.uid).collection("notifications").where("read", "==", false).limit(100).get();
+    const batch = db.batch(); snap.forEach(d => batch.set(d.ref, { read: true }, { merge: true })); await batch.commit();
+    showRaazToast?.("Notifications read ho gayi.","success");
+  } catch(err) { showRaazToast?.(err?.message || "Notifications update nahi hui.","error"); }
 });
 
 openCreatePostBtn.addEventListener("click", () => {
@@ -1188,14 +1228,15 @@ async function renderFollowButton(uid, data) {
 
 async function followUser(targetUid, targetName, targetUsername) {
   const myUid = auth.currentUser.uid;
-  await db.collection("users").doc(myUid).collection("following").doc(targetUid).set({
-    targetUid, targetName, targetUsername,
-    followedAt: firebase.firestore.FieldValue.serverTimestamp()
+  const batch = db.batch();
+  const now = firebase.firestore.FieldValue.serverTimestamp();
+  batch.set(db.collection("users").doc(myUid).collection("following").doc(targetUid), {
+    targetUid, targetName, targetUsername, followedAt: now
   });
-  await db.collection("users").doc(targetUid).collection("followers").doc(myUid).set({
-    followerUid: myUid, followerName: currentUserName, followerUsername: currentUsername,
-    followedAt: firebase.firestore.FieldValue.serverTimestamp()
+  batch.set(db.collection("users").doc(targetUid).collection("followers").doc(myUid), {
+    followerUid: myUid, followerName: currentUserName, followerUsername: currentUsername, followedAt: now
   });
+  await batch.commit();
   await createNotification(targetUid, { type: "follow", fromUid: myUid, fromName: currentUserName, fromUsername: currentUsername });
   await refreshFollowingIds();
   renderFeedFromCache();
@@ -1203,8 +1244,12 @@ async function followUser(targetUid, targetName, targetUsername) {
 
 async function unfollowUser(targetUid) {
   const myUid = auth.currentUser.uid;
-  await db.collection("users").doc(myUid).collection("following").doc(targetUid).delete();
-  await db.collection("users").doc(targetUid).collection("followers").doc(myUid).delete();
+  const batch = db.batch();
+  batch.delete(db.collection("users").doc(myUid).collection("following").doc(targetUid));
+  batch.delete(db.collection("users").doc(targetUid).collection("followers").doc(myUid));
+  await batch.commit();
+  await refreshFollowingIds();
+  renderFeedFromCache();
 }
 
 // ================= FOLLOWERS / FOLLOWING LIST =================
@@ -1260,116 +1305,113 @@ peopleListBackBtn.addEventListener("click", () => {
 });
 
 async function renderProfileViewActions(uid, data) {
-  const myUid = auth.currentUser.uid;
-  const chatId = getChatId(myUid, uid);
-
-  // 1. Kya maine ise block kiya hai?
-  const blockedDoc = await db.collection("users").doc(myUid).collection("blocked").doc(uid).get();
-  if (blockedDoc.exists) {
-    viewActionArea.innerHTML = `<button id="unblockActionBtn" class="viewActionBtn danger">Unblock Karo</button>`;
-    document.getElementById("unblockActionBtn").addEventListener("click", async () => {
-      await unblockUser(uid);
-      renderProfileViewActions(uid, data);
-    });
-    return;
+  try {
+      const myUid = auth.currentUser.uid;
+      const chatId = getChatId(myUid, uid);
+    
+      // 1. Kya maine ise block kiya hai?
+      const blockedDoc = await db.collection("users").doc(myUid).collection("blocked").doc(uid).get();
+      if (blockedDoc.exists) {
+        viewActionArea.innerHTML = `<button id="unblockActionBtn" class="viewActionBtn danger">Unblock Karo</button>`;
+        document.getElementById("unblockActionBtn").addEventListener("click", async () => {
+          await unblockUser(uid);
+          renderProfileViewActions(uid, data);
+        });
+        return;
+      }
+    
+      // 2. Kya hum already connected hain (chat list me entry hai)?
+      const chatListDoc = await db.collection("users").doc(myUid).collection("chatsList").doc(chatId).get();
+      if (chatListDoc.exists) {
+        viewActionArea.innerHTML = `<button id="messageActionBtn" class="viewActionBtn">💬 Message Karo</button>`;
+        document.getElementById("messageActionBtn").addEventListener("click", () => {
+          openChat(uid, data.name, data.username);
+        });
+        return;
+      }
+    
+      // 3. Kya maine already request bheji hui hai?
+      const sentDoc = await db.collection("users").doc(myUid).collection("requestsSent").doc(uid).get();
+      if (sentDoc.exists) {
+        viewActionArea.innerHTML = `
+          <button class="viewActionBtn disabled" disabled>Request Bheji Ja Chuki Hai</button>
+          <button id="cancelReqBtn" class="linkBtn">Request Cancel Karo</button>
+        `;
+        document.getElementById("cancelReqBtn").addEventListener("click", async () => {
+          await db.collection("users").doc(myUid).collection("requestsSent").doc(uid).delete();
+          await db.collection("users").doc(uid).collection("requestsReceived").doc(myUid).delete();
+          renderProfileViewActions(uid, data);
+        });
+        return;
+      }
+    
+      // 4. Kya isne mujhe request bheji hai?
+      const receivedDoc = await db.collection("users").doc(myUid).collection("requestsReceived").doc(uid).get();
+      if (receivedDoc.exists) {
+        viewActionArea.innerHTML = `
+          <button id="acceptActionBtn" class="viewActionBtn">✅ Accept Karo</button>
+          <button id="declineActionBtn" class="viewActionBtn secondaryBtn2">Decline Karo</button>
+        `;
+        document.getElementById("acceptActionBtn").addEventListener("click", async () => {
+          await acceptRequest(uid, data.name, data.username);
+          openChat(uid, data.name, data.username);
+        });
+        document.getElementById("declineActionBtn").addEventListener("click", async () => {
+          await declineRequest(uid);
+          renderProfileViewActions(uid, data);
+        });
+        return;
+      }
+    
+      // 5. Kuch bhi connection nahi hai - naya request bhejo
+      viewActionArea.innerHTML = `<button id="sendReqBtn" class="viewActionBtn">➕ Message Request Bhejo</button>`;
+      document.getElementById("sendReqBtn").addEventListener("click", async () => {
+        await sendMessageRequest(uid, data.name, data.username);
+        renderProfileViewActions(uid, data);
+      });
+  } catch(err) {
+    console.error("Profile action load", err);
+    viewActionArea.innerHTML = `<p class="error">${escapeHtml(err?.message || "Action load nahi hui.")}</p>`;
   }
-
-  // 2. Kya hum already connected hain (chat list me entry hai)?
-  const chatListDoc = await db.collection("users").doc(myUid).collection("chatsList").doc(chatId).get();
-  if (chatListDoc.exists) {
-    viewActionArea.innerHTML = `<button id="messageActionBtn" class="viewActionBtn">💬 Message Karo</button>`;
-    document.getElementById("messageActionBtn").addEventListener("click", () => {
-      openChat(uid, data.name, data.username);
-    });
-    return;
-  }
-
-  // 3. Kya maine already request bheji hui hai?
-  const sentDoc = await db.collection("users").doc(myUid).collection("requestsSent").doc(uid).get();
-  if (sentDoc.exists) {
-    viewActionArea.innerHTML = `
-      <button class="viewActionBtn disabled" disabled>Request Bheji Ja Chuki Hai</button>
-      <button id="cancelReqBtn" class="linkBtn">Request Cancel Karo</button>
-    `;
-    document.getElementById("cancelReqBtn").addEventListener("click", async () => {
-      await db.collection("users").doc(myUid).collection("requestsSent").doc(uid).delete();
-      await db.collection("users").doc(uid).collection("requestsReceived").doc(myUid).delete();
-      renderProfileViewActions(uid, data);
-    });
-    return;
-  }
-
-  // 4. Kya isne mujhe request bheji hai?
-  const receivedDoc = await db.collection("users").doc(myUid).collection("requestsReceived").doc(uid).get();
-  if (receivedDoc.exists) {
-    viewActionArea.innerHTML = `
-      <button id="acceptActionBtn" class="viewActionBtn">✅ Accept Karo</button>
-      <button id="declineActionBtn" class="viewActionBtn secondaryBtn2">Decline Karo</button>
-    `;
-    document.getElementById("acceptActionBtn").addEventListener("click", async () => {
-      await acceptRequest(uid, data.name, data.username);
-      openChat(uid, data.name, data.username);
-    });
-    document.getElementById("declineActionBtn").addEventListener("click", async () => {
-      await declineRequest(uid);
-      renderProfileViewActions(uid, data);
-    });
-    return;
-  }
-
-  // 5. Kuch bhi connection nahi hai - naya request bhejo
-  viewActionArea.innerHTML = `<button id="sendReqBtn" class="viewActionBtn">➕ Message Request Bhejo</button>`;
-  document.getElementById("sendReqBtn").addEventListener("click", async () => {
-    await sendMessageRequest(uid, data.name, data.username);
-    renderProfileViewActions(uid, data);
-  });
 }
 
 async function sendMessageRequest(toUid, toName, toUsername) {
   const myUid = auth.currentUser.uid;
-
-  // Check karo kahin usne mujhe block to nahi kiya
-  const theyBlockedMe = await db.collection("users").doc(toUid).collection("blocked").doc(myUid).get();
-  if (theyBlockedMe.exists) {
-    viewError.textContent = "Ye user abhi available nahi hai";
-    return;
-  }
-
-  await db.collection("users").doc(myUid).collection("requestsSent").doc(toUid).set({
-    toUid, toName, toUsername, createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  const batch = db.batch();
+  const now = firebase.firestore.FieldValue.serverTimestamp();
+  batch.set(db.collection("users").doc(myUid).collection("requestsSent").doc(toUid), {
+    toUid, toName, toUsername, createdAt: now
   });
-
-  await db.collection("users").doc(toUid).collection("requestsReceived").doc(myUid).set({
-    fromUid: myUid, fromName: currentUserName, fromUsername: currentUsername,
-    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  batch.set(db.collection("users").doc(toUid).collection("requestsReceived").doc(myUid), {
+    fromUid: myUid, fromName: currentUserName, fromUsername: currentUsername, createdAt: now
   });
+  await batch.commit();
 }
 
 async function acceptRequest(fromUid, fromName, fromUsername) {
   const myUid = auth.currentUser.uid;
   const chatId = getChatId(myUid, fromUid);
-
-  await db.collection("users").doc(myUid).collection("requestsReceived").doc(fromUid).delete();
-  await db.collection("users").doc(fromUid).collection("requestsSent").doc(myUid).delete();
-
-  await db.collection("users").doc(myUid).collection("chatsList").doc(chatId).set({
+  const batch = db.batch();
+  const now = firebase.firestore.FieldValue.serverTimestamp();
+  batch.delete(db.collection("users").doc(myUid).collection("requestsReceived").doc(fromUid));
+  batch.delete(db.collection("users").doc(fromUid).collection("requestsSent").doc(myUid));
+  batch.set(db.collection("users").doc(myUid).collection("chatsList").doc(chatId), {
     friendUid: fromUid, friendName: fromName, friendUsername: fromUsername,
-    lastMessage: "", lastMessageTime: firebase.firestore.FieldValue.serverTimestamp(),
-    lastSenderUid: null, category: "primary",
-    myLastRead: firebase.firestore.FieldValue.serverTimestamp()
+    lastMessage: "", lastMessageTime: now, lastSenderUid: null, category: "primary", myLastRead: now
   }, { merge: true });
-
-  await db.collection("users").doc(fromUid).collection("chatsList").doc(chatId).set({
+  batch.set(db.collection("users").doc(fromUid).collection("chatsList").doc(chatId), {
     friendUid: myUid, friendName: currentUserName, friendUsername: currentUsername,
-    lastMessage: "", lastMessageTime: firebase.firestore.FieldValue.serverTimestamp(),
-    lastSenderUid: null, category: "primary"
+    lastMessage: "", lastMessageTime: now, lastSenderUid: null, category: "primary"
   }, { merge: true });
+  await batch.commit();
 }
 
 async function declineRequest(fromUid) {
   const myUid = auth.currentUser.uid;
-  await db.collection("users").doc(myUid).collection("requestsReceived").doc(fromUid).delete();
-  await db.collection("users").doc(fromUid).collection("requestsSent").doc(myUid).delete();
+  const batch = db.batch();
+  batch.delete(db.collection("users").doc(myUid).collection("requestsReceived").doc(fromUid));
+  batch.delete(db.collection("users").doc(fromUid).collection("requestsSent").doc(myUid));
+  await batch.commit();
 }
 
 profileViewBackBtn.addEventListener("click", () => {
@@ -1654,7 +1696,11 @@ chatMenuBtn.addEventListener("click", () => {
   if (!currentChatId || !currentFriendUid) return;
   const friendName = friendNameDisplay.textContent.split(" (@")[0];
   const friendUsername = friendNameDisplay.textContent.split("(@")[1]?.replace(")", "") || "";
-  openChatItemMenu(currentChatId, currentFriendUid, friendName, friendUsername, "primary");
+  const myUid = auth.currentUser?.uid;
+  if (!myUid) return;
+  db.collection("users").doc(myUid).collection("chatsList").doc(currentChatId).get()
+    .then(snap => openChatItemMenu(currentChatId, currentFriendUid, friendName, friendUsername, snap.data()?.category === "secondary" ? "secondary" : "primary"))
+    .catch(() => openChatItemMenu(currentChatId, currentFriendUid, friendName, friendUsername, "primary"));
 });
 
 // ================= ONLINE STATUS =================
@@ -1724,21 +1770,23 @@ msgInput.addEventListener("input", () => {
 });
 
 // ================= SEND MESSAGE =================
-function sendMessage() {
+async function sendMessage() {
   const text = msgInput.value.trim();
-  if (!text || !currentChatId || !currentFriendUid) return;
-
+  if (!text || !currentChatId || !currentFriendUid || !auth.currentUser) return;
   const myUid = auth.currentUser.uid;
   clearTimeout(typingTimeout);
   clearTypingStatus();
-
-  db.collection("chats").doc(currentChatId).collection("messages").add({
-    text, sender: currentUserName, uid: myUid,
-    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-  });
-
-  updateChatListPreview(text);
-  msgInput.value = "";
+  sendBtn.disabled = true;
+  try {
+    await db.collection("chats").doc(currentChatId).collection("messages").add({
+      text, sender: currentUserName, uid: myUid,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    await updateChatListPreview(text);
+    msgInput.value = "";
+  } catch (err) {
+    showRaazToast?.(err?.message || "Message send nahi hua.", "error");
+  } finally { sendBtn.disabled = false; }
 }
 
 // ================= SEND PHOTO MESSAGE =================
@@ -1765,12 +1813,13 @@ chatPhotoInput.addEventListener("change", (e) => {
       }
 
       const myUid = auth.currentUser.uid;
-      db.collection("chats").doc(currentChatId).collection("messages").add({
-        imageBase64: compressedBase64, sender: currentUserName, uid: myUid,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-
-      updateChatListPreview("📷 Photo");
+      Promise.resolve().then(async()=>{
+        await db.collection("chats").doc(currentChatId).collection("messages").add({
+          imageBase64: compressedBase64, sender: currentUserName, uid: myUid,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        await updateChatListPreview("📷 Photo");
+      }).catch(err=>showRaazToast?.(err?.message || "Photo send nahi hui.", "error"));
     };
     img.src = event.target.result;
   };
@@ -1778,22 +1827,21 @@ chatPhotoInput.addEventListener("change", (e) => {
   chatPhotoInput.value = "";
 });
 
-function updateChatListPreview(previewText) {
+async function updateChatListPreview(previewText) {
   const myUid = auth.currentUser.uid;
   const friendNameText = friendNameDisplay.textContent.split(" (@")[0];
   const friendUsernameText = friendNameDisplay.textContent.split("(@")[1]?.replace(")", "") || "";
-
-  db.collection("users").doc(myUid).collection("chatsList").doc(currentChatId).set({
+  const now = firebase.firestore.FieldValue.serverTimestamp();
+  const batch = db.batch();
+  batch.set(db.collection("users").doc(myUid).collection("chatsList").doc(currentChatId), {
     friendUid: currentFriendUid, friendName: friendNameText, friendUsername: friendUsernameText,
-    lastMessage: previewText, lastMessageTime: firebase.firestore.FieldValue.serverTimestamp(),
-    lastSenderUid: myUid, myLastRead: firebase.firestore.FieldValue.serverTimestamp()
+    lastMessage: previewText, lastMessageTime: now, lastSenderUid: myUid, myLastRead: now
   }, { merge: true });
-
-  db.collection("users").doc(currentFriendUid).collection("chatsList").doc(currentChatId).set({
+  batch.set(db.collection("users").doc(currentFriendUid).collection("chatsList").doc(currentChatId), {
     friendUid: myUid, friendName: currentUserName, friendUsername: currentUsername,
-    lastMessage: previewText, lastMessageTime: firebase.firestore.FieldValue.serverTimestamp(),
-    lastSenderUid: myUid
+    lastMessage: previewText, lastMessageTime: now, lastSenderUid: myUid
   }, { merge: true });
+  await batch.commit();
 }
 
 sendBtn.addEventListener("click", sendMessage);
@@ -1836,9 +1884,9 @@ function renderMessagesList() {
 
     let contentHtml = "";
     if (msg.imageBase64) {
-      contentHtml = `<img src="${msg.imageBase64}" class="msgImage">`;
+      contentHtml = `<img src="${escapeHtml(msg.imageBase64)}" class="msgImage" alt="Photo">`;
     } else {
-      contentHtml = msg.text || "";
+      contentHtml = escapeHtml(msg.text || "").replace(/\n/g, "<br>");
     }
 
     let tickHtml = "";
@@ -1848,7 +1896,7 @@ function renderMessagesList() {
     }
 
     msgEl.innerHTML = `
-      ${!isMine ? `<span class="sender">${msg.sender}</span>` : ""}
+      ${!isMine ? `<span class="sender">${escapeHtml(msg.sender || "User")}</span>` : ""}
       ${contentHtml}
       <div class="msgMeta">${formatMsgTime(msg.createdAt)} ${tickHtml}</div>
     `;
@@ -1892,7 +1940,7 @@ function raazGoHome(tab="feed"){
   showHomeTab(tab === "chats" ? "chats" : "feed");
   document.querySelectorAll(".raazNav").forEach(b=>b.classList.toggle("active", b.dataset.raazNav===tab));
 }
-function raazGoFeature(screen, nav){ hideFeatureScreens(); screen?.classList.remove("hidden"); showRaazBottomNav(true); document.querySelectorAll(".raazNav").forEach(b=>b.classList.toggle("active", b.dataset.raazNav===nav)); }
+function raazGoFeature(screen, nav){ showScreen(screen); showRaazBottomNav(true); document.querySelectorAll(".raazNav").forEach(b=>b.classList.toggle("active", b.dataset.raazNav===nav)); }
 
 function setActiveRaazNav(name){
   document.querySelectorAll(".raazNav").forEach(b=>b.classList.toggle("active", b.dataset.raazNav===name));
@@ -1946,6 +1994,7 @@ async function renderExplore(term){
     exploreResults.innerHTML=html||`<div class="featureEmpty"><div>⌕</div><h3>Kuch nahi mila</h3><p>Search term change karke try karo.</p></div>`;
     exploreResults.querySelectorAll(".exploreOpen").forEach(b=>b.addEventListener("click",async()=>{const d=await db.collection("users").doc(b.dataset.uid).get();if(d.exists)openProfileView(b.dataset.uid,d.data());}));
     exploreResults.querySelectorAll(".explorePostJump").forEach(b=>b.addEventListener("click",()=>{raazGoHome("feed"); setTimeout(()=>document.querySelector(`[data-post-id="${b.dataset.postId}"]`)?.scrollIntoView({behavior:"smooth",block:"center"}),150);}));
+    exploreResults.querySelectorAll(".hashtagJump").forEach(b=>b.addEventListener("click",()=>{const tag=b.querySelector("strong")?.textContent||"";activeExploreFilter="posts";if(exploreSearchInput)exploreSearchInput.value=tag;document.querySelectorAll(".exploreChip").forEach(x=>x.classList.toggle("active",x.dataset.exploreFilter==="posts"));renderExplore(tag);}));
   }catch(e){exploreResults.innerHTML=`<div class="featureEmpty"><h3>Explore ready</h3><p>${escapeHtml(e.code||e.message||"Search unavailable")}</p></div>`;}
 }
 document.getElementById("exploreSearchBtn")?.addEventListener("click",()=>renderExplore());
@@ -2070,16 +2119,95 @@ async function sendReelComment(){
 document.getElementById("createReelBtn")?.addEventListener("click",()=>document.getElementById("createReelOverlay")?.classList.remove("hidden"));
 document.getElementById("closeCreateReelBtn")?.addEventListener("click",()=>document.getElementById("createReelOverlay")?.classList.add("hidden"));
 document.getElementById("reelVideoInput")?.addEventListener("change",e=>{const f=e.target.files[0];if(!f)return;const url=URL.createObjectURL(f);const box=document.getElementById("reelVideoPreview");box.innerHTML=`<video src="${url}" controls playsinline style="width:100%;max-height:360px;border-radius:14px"></video>`;box.classList.remove("hidden");});
-document.getElementById("publishReelBtn")?.addEventListener("click",async()=>{const f=document.getElementById("reelVideoInput")?.files[0],cap=document.getElementById("reelCaptionInput")?.value.trim(),err=document.getElementById("reelError");if(!f){err.textContent="Video select karo.";return;}if(f.size>8*1024*1024){err.textContent="Demo build me 8MB tak video rakho.";return;}const r=new FileReader();r.onload=async()=>{try{await db.collection("reels").add({uid:auth.currentUser.uid,name:currentUserName,username:currentUsername,caption:cap,videoBase64:r.result,likeCount:0,commentCount:0,createdAt:firebase.firestore.FieldValue.serverTimestamp()});document.getElementById("createReelOverlay").classList.add("hidden");listenForReels();}catch(e){err.textContent=e.message||"Reel publish nahi hui.";}};r.readAsDataURL(f);});
+async function compressReelForFirestore(file, progressEl){
+  const MAX_BYTES = 650 * 1024; // Firestore 1 MiB document limit; leave room for metadata.
+  if(file.size <= MAX_BYTES) return await fileToDataUrl(file);
+  if(!window.MediaRecorder) throw new Error("Is browser me video compression supported nahi hai. Chhota video select karo.");
+  const src = URL.createObjectURL(file);
+  const video = document.createElement("video");
+  video.muted = true; video.playsInline = true; video.src = src;
+  await new Promise((resolve,reject)=>{ video.onloadedmetadata=resolve; video.onerror=()=>reject(new Error("Video read nahi ho payi.")); });
+  if(!isFinite(video.duration) || video.duration <= 0){ URL.revokeObjectURL(src); throw new Error("Video duration read nahi ho payi."); }
+  if(video.duration > 20){ URL.revokeObjectURL(src); throw new Error("Demo Reel maximum 20 seconds rakho."); }
+  const scale = Math.min(1, 480 / Math.max(video.videoWidth||480, video.videoHeight||480));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(240, Math.round((video.videoWidth||480)*scale));
+  canvas.height = Math.max(240, Math.round((video.videoHeight||480)*scale));
+  const ctx = canvas.getContext("2d");
+  const stream = canvas.captureStream(24);
+  let recorder;
+  try { recorder = new MediaRecorder(stream,{mimeType:"video/webm;codecs=vp8",videoBitsPerSecond:240000}); }
+  catch(e){ recorder = new MediaRecorder(stream,{videoBitsPerSecond:220000}); }
+  const chunks=[];
+  recorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data);};
+  const stopped = new Promise((resolve,reject)=>{recorder.onstop=resolve;recorder.onerror=()=>reject(new Error("Video compression fail ho gayi."));});
+  recorder.start(250);
+  const started=performance.now();
+  video.currentTime=0;
+  await video.play();
+  await new Promise(resolve=>{
+    const draw=()=>{
+      if(video.paused || video.ended || video.currentTime>=video.duration){resolve();return;}
+      ctx.drawImage(video,0,0,canvas.width,canvas.height);
+      if(progressEl) progressEl.textContent=`Video compress ho raha hai… ${Math.min(99,Math.round((video.currentTime/video.duration)*100))}%`;
+      requestAnimationFrame(draw);
+    }; draw();
+  });
+  try{video.pause();}catch{}
+  if(recorder.state!=="inactive") recorder.stop();
+  await stopped;
+  URL.revokeObjectURL(src);
+  const blob=new Blob(chunks,{type:"video/webm"});
+  if(blob.size>MAX_BYTES) throw new Error("Video abhi bhi bada hai. 15–20 sec ka short video select karo.");
+  return await fileToDataUrl(blob);
+}
+function fileToDataUrl(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(new Error("Video read nahi ho payi."));r.readAsDataURL(file);});}
 
-async function listenForGroups(){if(unsubscribeGroups)unsubscribeGroups();unsubscribeGroups=db.collection("groups").orderBy("createdAt","desc").limit(50).onSnapshot(s=>{groupsList.innerHTML="";document.getElementById("groupsEmpty")?.classList.toggle("hidden",!s.empty);s.forEach(doc=>{const d=doc.data(),c=document.createElement("div");c.className="groupCard";c.innerHTML=`<div class="groupIcon">${d.type==="channel"?"📢":"👥"}</div><div><strong>${escapeHtml(d.name||"Community")}</strong><small>${escapeHtml(d.bio||"")}</small></div><button class="exploreOpen">${d.type==="channel"?"View":"Join"}</button>`;c.querySelector("button").onclick=()=>joinGroup(doc.id,d);groupsList.appendChild(c);});},()=>{});}
+document.getElementById("publishReelBtn")?.addEventListener("click",async()=>{
+  const f=document.getElementById("reelVideoInput")?.files[0],cap=document.getElementById("reelCaptionInput")?.value.trim(),err=document.getElementById("reelError"),btn=document.getElementById("publishReelBtn");
+  if(!f){err.textContent="Video select karo.";return;}
+  if(f.size>8*1024*1024){err.textContent="Original video 8MB se kam rakho.";return;}
+  btn.disabled=true; err.textContent="Video prepare ho rahi hai…";
+  try{
+    const videoData=await compressReelForFirestore(f,err);
+    await db.collection("reels").add({uid:auth.currentUser.uid,name:currentUserName,username:currentUsername,caption:cap,videoBase64:videoData,likeCount:0,commentCount:0,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+    document.getElementById("createReelOverlay").classList.add("hidden");
+    document.getElementById("reelVideoInput").value="";
+    document.getElementById("reelVideoPreview").innerHTML="";
+    err.textContent="";
+    listenForReels();
+    showRaazToast?.("Reel publish ho gayi.","success");
+  }catch(e){err.textContent=e?.message||"Reel publish nahi hui.";}
+  finally{btn.disabled=false;}
+});
+
+async function listenForGroups(){
+  if(unsubscribeGroups)unsubscribeGroups();
+  unsubscribeGroups=db.collection("groups").orderBy("createdAt","desc").limit(50).onSnapshot(s=>{
+    groupsList.innerHTML="";
+    document.getElementById("groupsEmpty")?.classList.toggle("hidden",!s.empty);
+    s.forEach(doc=>{const d=doc.data(),c=document.createElement("div");c.className="groupCard";c.innerHTML=`<div class="groupIcon">${d.type==="channel"?"📢":"👥"}</div><div><strong>${escapeHtml(d.name||"Community")}</strong><small>${escapeHtml(d.bio||"")}</small></div><button class="exploreOpen">${d.type==="channel"?"View":"Join"}</button>`;c.querySelector("button").onclick=()=>joinGroup(doc.id,d);groupsList.appendChild(c);});
+  },err=>{
+    console.error("Communities listener",err);
+    if(groupsList)groupsList.innerHTML=`<div class="featureEmpty"><h3>Communities load nahi hui</h3><p>${escapeHtml(v15Message(err,"Firebase error"))}</p></div>`;
+  });
+}
 async function joinGroup(id,d){try{await db.collection("groups").doc(id).collection("members").doc(auth.currentUser.uid).set({uid:auth.currentUser.uid,name:currentUserName,username:currentUsername,joinedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});alert(`${d.name||"Community"} me join ho gaye.`);}catch(e){alert(e.message||"Join failed");}}
 document.getElementById("createGroupBtn")?.addEventListener("click",()=>document.getElementById("createGroupOverlay")?.classList.remove("hidden"));
 document.getElementById("closeCreateGroupBtn")?.addEventListener("click",()=>document.getElementById("createGroupOverlay")?.classList.add("hidden"));
-document.getElementById("publishGroupBtn")?.addEventListener("click",async()=>{const name=document.getElementById("groupNameInput").value.trim(),bio=document.getElementById("groupBioInput").value.trim(),type=document.getElementById("groupTypeChannel").classList.contains("active")?"channel":"group",err=document.getElementById("groupError");if(!name){err.textContent="Name likho.";return;}try{const ref=await db.collection("groups").add({name,bio,type,ownerUid:auth.currentUser.uid,ownerName:currentUserName,createdAt:firebase.firestore.FieldValue.serverTimestamp()});await ref.collection("members").doc(auth.currentUser.uid).set({uid:auth.currentUser.uid,role:"owner",joinedAt:firebase.firestore.FieldValue.serverTimestamp()});document.getElementById("createGroupOverlay").classList.add("hidden");listenForGroups();}catch(e){err.textContent=e.message||"Create nahi hua.";}});
+document.getElementById("publishGroupBtn")?.addEventListener("click",async()=>{const name=document.getElementById("groupNameInput").value.trim(),bio=document.getElementById("groupBioInput").value.trim(),type=document.getElementById("groupTypeChannel").classList.contains("active")?"channel":"group",err=document.getElementById("groupError");if(!name){err.textContent="Name likho.";return;}try{const ref=db.collection("groups").doc();const now=firebase.firestore.FieldValue.serverTimestamp();const batch=db.batch();batch.set(ref,{name,bio,type,ownerUid:auth.currentUser.uid,ownerName:currentUserName,createdAt:now});batch.set(ref.collection("members").doc(auth.currentUser.uid),{uid:auth.currentUser.uid,role:"owner",joinedAt:now});await batch.commit();document.getElementById("createGroupOverlay").classList.add("hidden");document.getElementById("groupNameInput").value="";document.getElementById("groupBioInput").value="";err.textContent="";listenForGroups();showRaazToast?.("Community create ho gayi.","success");}catch(e){err.textContent=e.message||"Create nahi hua.";}});
 document.getElementById("groupTypeGroup")?.addEventListener("click",()=>{document.getElementById("groupTypeGroup").classList.add("active");document.getElementById("groupTypeChannel").classList.remove("active")});document.getElementById("groupTypeChannel")?.addEventListener("click",()=>{document.getElementById("groupTypeChannel").classList.add("active");document.getElementById("groupTypeGroup").classList.remove("active")});
 
-async function listenForNotes(){if(unsubscribeNotes)unsubscribeNotes();unsubscribeNotes=db.collection("notes").orderBy("createdAt","desc").limit(50).onSnapshot(s=>{notesList.innerHTML="";s.forEach(doc=>{const d=doc.data(),c=document.createElement("div");c.className="noteCard";c.innerHTML=`<strong>${escapeHtml(d.name||"User")} <small>@${escapeHtml(d.username||"user")}</small></strong><div>${escapeHtml(d.text||"")}</div><small>${formatPostTime(d.createdAt)}</small>`;notesList.appendChild(c);});},()=>{});}
+async function listenForNotes(){
+  if(unsubscribeNotes)unsubscribeNotes();
+  unsubscribeNotes=db.collection("notes").orderBy("createdAt","desc").limit(50).onSnapshot(s=>{
+    notesList.innerHTML="";
+    s.forEach(doc=>{const d=doc.data(),c=document.createElement("div");c.className="noteCard";c.innerHTML=`<strong>${escapeHtml(d.name||"User")} <small>@${escapeHtml(d.username||"user")}</small></strong><div>${escapeHtml(d.text||"")}</div><small>${formatPostTime(d.createdAt)}</small>`;notesList.appendChild(c);});
+  },err=>{
+    console.error("Notes listener",err);
+    if(notesList)notesList.innerHTML=`<div class="featureEmpty"><h3>Notes load nahi hui</h3><p>${escapeHtml(v15Message(err,"Firebase error"))}</p></div>`;
+  });
+}
 document.getElementById("publishNoteBtn")?.addEventListener("click",async()=>{const text=document.getElementById("noteInput").value.trim();if(!text)return;try{await db.collection("notes").add({uid:auth.currentUser.uid,name:currentUserName,username:currentUsername,text,createdAt:firebase.firestore.FieldValue.serverTimestamp(),expiresAt:firebase.firestore.Timestamp.fromDate(new Date(Date.now()+86400000))});document.getElementById("noteInput").value="";}catch(e){alert(e.message||"Note share nahi hui.");}});
 
 function loadRaazSettings(){
@@ -2087,7 +2215,7 @@ function loadRaazSettings(){
   if(privateAccountToggle)privateAccountToggle.checked=p;if(activityStatusToggle)activityStatusToggle.checked=a;if(messageRequestsToggle)messageRequestsToggle.checked=m;if(reduceMotionToggle)reduceMotionToggle.checked=r;if(compactUiToggle)compactUiToggle.checked=c;if(autoplayReelsToggle)autoplayReelsToggle.checked=ap;if(raazThemeSelect)raazThemeSelect.value=theme;
   document.documentElement.classList.toggle("reduceMotion",r);document.documentElement.classList.toggle("compactUi",c);document.documentElement.dataset.raazTheme=theme;
 }
-[[privateAccountToggle,"raaz.privateAccount"],[activityStatusToggle,"raaz.activity"],[messageRequestsToggle,"raaz.requests"],[reduceMotionToggle,"raaz.reduceMotion"],[compactUiToggle,"raaz.compactUi"],[autoplayReelsToggle,"raaz.autoplayReels"]].forEach(([el,key])=>el?.addEventListener("change",()=>{localStorage.setItem(key,el.checked?"1":"0");if(key==="raaz.reduceMotion")document.documentElement.classList.toggle("reduceMotion",el.checked);if(key==="raaz.compactUi")document.documentElement.classList.toggle("compactUi",el.checked);}));
+[[privateAccountToggle,"raaz.privateAccount"],[activityStatusToggle,"raaz.activity"],[messageRequestsToggle,"raaz.requests"],[reduceMotionToggle,"raaz.reduceMotion"],[compactUiToggle,"raaz.compactUi"],[autoplayReelsToggle,"raaz.autoplayReels"]].forEach(([el,key])=>el?.addEventListener("change",()=>{localStorage.setItem(key,el.checked?"1":"0");if(key==="raaz.reduceMotion")document.documentElement.classList.toggle("reduceMotion",el.checked);if(key==="raaz.compactUi")document.documentElement.classList.toggle("compactUi",el.checked);if(key==="raaz.autoplayReels")setupReelAutoplay();showRaazToast?.("Setting save ho gayi.","success");}));
 loadRaazSettings();
 raazThemeSelect?.addEventListener("change",()=>{const v=raazThemeSelect.value||"midnight";localStorage.setItem("raaz.theme",v);document.documentElement.dataset.raazTheme=v;showRaazToast("Theme updated","success");});
 document.getElementById("openMyProfileFromSettings")?.addEventListener("click",()=>profileBtn?.click());
@@ -2144,13 +2272,29 @@ updateBodyOverlayLock();
 window.openRaazGroups=()=>{raazGoFeature(groupsScreen,"more");listenForGroups();};
 window.openRaazNotes=()=>{raazGoFeature(notesScreen,"more");listenForNotes();};
 window.openRaazSettings=()=>{raazGoFeature(settingsScreen,"more");loadRaazSettings();};
+document.getElementById("createReelOverlay")?.addEventListener("click",e=>{if(e.target===e.currentTarget)e.currentTarget.classList.add("hidden")});
+document.getElementById("createGroupOverlay")?.addEventListener("click",e=>{if(e.target===e.currentTarget)e.currentTarget.classList.add("hidden")});
+document.getElementById("reelCommentsOverlay")?.addEventListener("click",e=>{if(e.target===e.currentTarget)e.currentTarget.classList.add("hidden")});
+document.getElementById("raazMoreOverlay")?.addEventListener("click",e=>{if(e.target===e.currentTarget)e.currentTarget.classList.add("hidden")});
 document.getElementById("openMoreBtn")?.addEventListener("click",()=>document.getElementById("raazMoreOverlay")?.classList.remove("hidden"));
 document.getElementById("moreLogoutBtn")?.addEventListener("click",()=>{document.getElementById("raazMoreOverlay")?.classList.add("hidden");doLogout();});
 document.getElementById("settingsLogoutBtn")?.addEventListener("click",()=>{if(confirm("RAAZ se logout karna hai?"))doLogout();});
 document.getElementById("openGroupsBtn")?.addEventListener("click",()=>{document.getElementById("raazMoreOverlay").classList.add("hidden");openRaazGroups();});document.getElementById("openNotesBtn")?.addEventListener("click",()=>{document.getElementById("raazMoreOverlay").classList.add("hidden");openRaazNotes();});document.getElementById("openSettingsBtn")?.addEventListener("click",()=>{document.getElementById("raazMoreOverlay").classList.add("hidden");openRaazSettings();});document.getElementById("closeMoreBtn")?.addEventListener("click",()=>document.getElementById("raazMoreOverlay").classList.add("hidden"));
 
 // Repost support on current post cards.
-async function repostPost(postId,data){const uid=auth.currentUser.uid;if(data.uid===uid){alert("Apni post ko repost karne ki zarurat nahi hai.");return;}try{await db.collection("reposts").doc(`${uid}_${postId}`).set({uid,postId,originalUid:data.uid,originalUsername:data.username||"user",createdAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});await db.collection("users").doc(data.uid).collection("notifications").add({type:"repost",fromUid:uid,fromName:currentUserName,fromUsername:currentUsername,postId,read:false,createdAt:firebase.firestore.FieldValue.serverTimestamp()});alert("Post repost ho gayi.");}catch(e){alert(e.message||"Repost failed");}}
+async function repostPost(postId,data){
+  const uid=auth.currentUser?.uid;
+  if(!uid)return;
+  if(data.uid===uid){showRaazToast?.("Apni post ko repost karne ki zarurat nahi hai.","error");return;}
+  const ref=db.collection("reposts").doc(`${uid}_${postId}`);
+  try{
+    const existing=await ref.get();
+    if(existing.exists){showRaazToast?.("Ye post pehle se repost hai.","error");return;}
+    await ref.set({uid,postId,originalUid:data.uid,originalUsername:data.username||"user",createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+    await db.collection("users").doc(data.uid).collection("notifications").add({type:"repost",fromUid:uid,fromName:currentUserName,fromUsername:currentUsername,postId,read:false,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+    showRaazToast?.("Post repost ho gayi.","success");
+  }catch(e){showRaazToast?.(e.message||"Repost failed","error");}
+}
 window.repostPost=repostPost;
 
 
@@ -2159,9 +2303,23 @@ document.getElementById("profileEditActionBtn")?.addEventListener("click",()=>{
   document.getElementById("editBioBox")?.classList.remove("hidden");
   document.getElementById("newUsernameInput")?.focus();
 });
-document.getElementById("profilePostsBtn")?.addEventListener("click",()=>{
-  window.raazProfileOnly=true; activeFeedFilter="all"; feedFilters.forEach(b=>b.classList.toggle("active",b.dataset.feedFilter==="all"));
-  raazGoHome("feed"); renderFeedFromCache();
+document.getElementById("profilePostsBtn")?.addEventListener("click",async()=>{
+  if(!auth.currentUser)return;
+  raazGoHome("feed");
+  window.raazProfileOnly=true;
+  activeFeedFilter="all";
+  feedFilters.forEach(b=>b.classList.toggle("active",b.dataset.feedFilter==="all"));
+  feedList.innerHTML='<div class="feedLoading">Tumhari posts load ho rahi hain...</div>';
+  try{
+    const snap=await db.collection("posts").where("uid","==",auth.currentUser.uid).limit(100).get();
+    profilePostCache=snap.docs.map(doc=>({id:doc.id,data:doc.data()})).sort((a,b)=>{
+      const at=a.data.createdAt?.toMillis?.()||0, bt=b.data.createdAt?.toMillis?.()||0; return bt-at;
+    });
+    renderFeedFromCache();
+  }catch(err){
+    feedList.innerHTML=`<div class="feedEmpty feedErrorState"><div class="feedEmptyIcon">↻</div><h3>My Posts load nahi hui</h3><p>${escapeHtml(err?.message||"Firebase error")}</p><button class="primaryAction myPostsRetry">Try again</button></div>`;
+    feedList.querySelector('.myPostsRetry')?.addEventListener('click',()=>document.getElementById('profilePostsBtn')?.click());
+  }
 });
 
 
