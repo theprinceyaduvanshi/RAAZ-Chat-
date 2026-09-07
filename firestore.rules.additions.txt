@@ -1,0 +1,52 @@
+RAAZ FIRESTORE RULES — NEW V2/V3 COLLECTIONS
+
+IMPORTANT:
+Do NOT blindly replace your existing Firebase rules with this file. Add these match blocks INSIDE your existing:
+match /databases/{database}/documents { ... }
+
+These blocks are for the new Feed, Likes, Comments, Saved Posts and Notifications features.
+
+    // ---------------- POSTS / FEED ----------------
+    match /posts/{postId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if request.auth != null
+        && resource.data.uid == request.auth.uid;
+
+      match /likes/{uid} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null && uid == request.auth.uid;
+        allow delete: if request.auth != null && uid == request.auth.uid;
+      }
+
+      match /comments/{commentId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null
+          && request.resource.data.uid == request.auth.uid;
+        allow update, delete: if request.auth != null
+          && resource.data.uid == request.auth.uid;
+      }
+    }
+
+    // ---------------- SAVED POSTS ----------------
+    match /users/{userId}/savedPosts/{postId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create, update: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // ---------------- NOTIFICATIONS ----------------
+    match /users/{userId}/notifications/{notificationId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow update, delete: if request.auth != null && request.auth.uid == userId;
+      // Notification creation is needed when another user likes/comments/follows.
+      // For production-grade security, move notification creation to a trusted backend/Cloud Function.
+      allow create: if request.auth != null;
+    }
+
+NOTE:
+The Feed query is:
+  posts.orderBy("createdAt", "desc").limit(50)
+This normally does NOT need a composite index because it is a single-field orderBy.
+If Firebase Console shows a specific index-creation link, create exactly the index it requests.

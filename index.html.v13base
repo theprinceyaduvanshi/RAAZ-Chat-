@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>RAAZ — Connect. Share. Discover.</title>
+<title>RAAZ</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#8B0000">
 <link rel="icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css?v=14.0.0">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 
   <!-- SPLASH / ENTRY ANIMATION -->
   <div id="splashScreen" class="splash">
     <div class="splashLogo">RAAZ</div>
-    <div class="splashTagline">Your Chats Is Fully <span>RAAZ</span></div>
+    <div class="splashTagline">Private chats. Real connections. <span>RAAZ</span></div>
   </div>
 
   <!-- LOGIN / SIGNUP SCREEN -->
@@ -38,30 +38,25 @@
 
   <!-- HOME SCREEN -->
   <div id="homeScreen" class="screen hidden">
-    <div class="chatHeader raazHomeHeader">
-      <div class="raazBrandBlock">
-        <strong class="raazBrand">RAAZ</strong>
-        <span id="myUsernameDisplay">@username</span>
-      </div>
+    <div class="chatHeader">
+      <span id="myUsernameDisplay">Tumhara username</span>
       <div class="headerBtns">
-        <button id="notificationsBtn" class="headerIconBtn" aria-label="Notifications">
-          <span>♡</span><span id="notificationsBadge" class="badge hidden">0</span>
+        <button id="notificationsBtn" class="iconBtn" aria-label="Notifications">
+          🔔<span id="notificationsBadge" class="badge hidden">0</span>
         </button>
-        <button id="requestsBtn" class="headerIconBtn requestsIconBtn" aria-label="Message requests">
-          <span>✉</span><span id="requestsBadge" class="badge hidden">0</span>
+        <button id="requestsBtn" class="iconBtn requestsIconBtn">
+          📥<span id="requestsBadge" class="badge hidden">0</span>
         </button>
-        <button id="openMoreBtn" class="headerIconBtn" aria-label="More">•••</button>
-        <!-- Compatibility hooks: primary navigation is now the bottom bar. -->
-        <button id="profileBtn" class="hidden" aria-hidden="true" tabindex="-1">Profile</button>
-        <button id="logoutBtnHome" class="hidden" aria-hidden="true" tabindex="-1">Logout</button>
-        <!-- Hidden compatibility controls keep the legacy JS architecture alive without duplicate UI. -->
-        <button id="feedTabBtn" class="hidden" aria-hidden="true" tabindex="-1">Feed</button>
-        <button id="chatsTabBtn" class="hidden" aria-hidden="true" tabindex="-1">Chats</button>
-        <button id="blockedListBtn" class="hidden" aria-hidden="true" tabindex="-1">Blocked</button>
+        <button id="profileBtn" class="iconBtn">👤</button>
+        <button id="openMoreBtn" class="iconBtn" aria-label="More">⋯</button>
+        <button id="logoutBtnHome">Logout</button>
       </div>
     </div>
 
-
+    <div class="homeTabs">
+      <button id="feedTabBtn" class="homeTab active">🏠 Feed</button>
+      <button id="chatsTabBtn" class="homeTab">💬 Chats</button>
+    </div>
 
     <section id="feedSection" class="feedSection">
       <div class="storyRailWrap">
@@ -70,7 +65,7 @@
             <strong>Stories</strong>
             <span>24 hours</span>
           </div>
-          <span class="storyRailHint">Stories disappear after 24h</span>
+          <button id="openCreateStoryBtn" class="storyCreateTopBtn">＋ Create</button>
         </div>
         <div id="storyRail" class="storyRail"></div>
       </div>
@@ -82,6 +77,7 @@
       <div class="createPostCard">
         <div class="miniComposerAvatar" id="composerAvatar">R</div>
         <button id="openCreatePostBtn" class="composerPrompt">Kuch share karna hai?</button>
+        <button id="quickCreatePostBtn" class="quickCreatePostBtn" aria-label="Create post">＋</button>
       </div>
       <div id="feedEmpty" class="feedEmpty hidden">
         <div class="feedEmptyIcon">✦</div>
@@ -107,9 +103,6 @@
       </div>
     </section>
   </div>
-
-  <div id="raazOfflineBar" class="raazOfflineBar hidden">You are offline · kuch actions internet aane par sync hongi</div>
-  <div id="raazToast" class="raazToast" role="status" aria-live="polite"></div>
 
   <!-- REQUESTS SCREEN -->
   <div id="requestsScreen" class="screen hidden">
@@ -212,9 +205,13 @@
         <div class="profileInfoValue" id="profileEmail">email@gmail.com</div>
       </div>
 
-      <div class="profileQuickGrid profilePrimaryActions">
+      <button id="blockedListBtn" class="editUsernameBtn">🚫 Blocked Users Dekho</button>
+
+      <div class="profileQuickGrid">
         <button id="profilePostsBtn">📝 My Posts</button>
-        <button id="profileSavedBtn">🔖 Saved</button>
+        <button id="profileGroupsBtn">👥 Communities</button>
+        <button id="profileNotesBtn">💭 Notes</button>
+        <button id="profileSettingsBtn">⚙️ Settings</button>
       </div>
 
       <div class="qrSection">
@@ -359,14 +356,14 @@
     </div>
   </div>
 
-  <!-- RAAZ V13 PROFESSIONAL SUPER APP NAVIGATION -->
+  <!-- RAAZ V12 SUPER APP NAVIGATION -->
   <div id="raazBottomNav" class="raazBottomNav hidden">
     <button data-raaz-nav="feed" class="raazNav active">⌂<span>Home</span></button>
     <button data-raaz-nav="explore" class="raazNav">⌕<span>Explore</span></button>
     <button data-raaz-nav="reels" class="raazNav">▶<span>Reels</span></button>
     <button data-raaz-nav="create" class="raazNav raazNavCreate">＋<span>Create</span></button>
     <button data-raaz-nav="chats" class="raazNav">✉<span>Chats</span></button>
-    <button data-raaz-nav="profile" class="raazNav"><span id="bottomProfileAvatar" class="bottomProfileAvatar">R</span><span>Profile</span></button>
+    <button data-raaz-nav="profile" class="raazNav">●<span>Profile</span></button>
   </div>
 
   <!-- EXPLORE -->
@@ -402,11 +399,10 @@
   <!-- SETTINGS -->
   <section id="settingsScreen" class="screen hidden raazFeatureScreen">
     <div class="featureHeader"><strong>Settings & Privacy</strong><button id="settingsBackBtn" class="iconBtn">←</button></div>
-    <div class="settingsGroup"><h4>Account & safety</h4><button id="openBlockedFromSettings" class="settingRow">🚫 Blocked users <span>›</span></button></div>
+    <div class="settingsGroup"><h4>Account</h4><button id="openMyProfileFromSettings" class="settingRow">👤 Edit profile <span>›</span></button><button id="openBlockedFromSettings" class="settingRow">🚫 Blocked users <span>›</span></button></div>
     <div class="settingsGroup"><h4>Privacy</h4><label class="settingRow">Private account <input id="privateAccountToggle" type="checkbox"></label><label class="settingRow">Activity status <input id="activityStatusToggle" type="checkbox" checked></label><label class="settingRow">Allow message requests <input id="messageRequestsToggle" type="checkbox" checked></label></div>
-    <div class="settingsGroup"><h4>Experience</h4><label class="settingRow">Reduce motion <input id="reduceMotionToggle" type="checkbox"></label><label class="settingRow">Compact interface <input id="compactUiToggle" type="checkbox"></label><label class="settingRow">Autoplay reels <input id="autoplayReelsToggle" type="checkbox" checked></label><label class="settingRow">Theme <select id="raazThemeSelect" class="settingSelect"><option value="midnight">Midnight</option><option value="ember">Ember</option><option value="graphite">Graphite</option></select></label><button id="clearSearchHistoryBtn" class="settingRow dangerText">Clear search history <span>›</span></button></div>
-    <div class="settingsGroup"><h4>Account</h4><button id="settingsLogoutBtn" class="settingRow dangerText">↪ Log out <span>Secure sign out</span></button></div>
-    <div class="settingsAbout">RAAZ · Connect. Share. Discover.<br><span>Built for simple, private and smooth social experiences.</span></div>
+    <div class="settingsGroup"><h4>Experience</h4><label class="settingRow">Reduce motion <input id="reduceMotionToggle" type="checkbox"></label><button id="clearSearchHistoryBtn" class="settingRow dangerText">Clear search history <span>›</span></button></div>
+    <div class="settingsAbout">RAAZ V12 · Social, Stories, Reels, Communities & Messaging</div>
   </section>
 
   <!-- CREATE GROUP -->
@@ -427,43 +423,8 @@
   <!-- STORY REPLY -->
   <div id="storyReplyBar" class="storyReplyBar hidden"><input id="storyReplyInput" maxlength="300" placeholder="Story ko reply karo..."><button id="sendStoryReplyBtn">➤</button></div>
 
-  <!-- GLOBAL CREATE SHEET: ek hi jagah se saare creation actions -->
-  <div id="createActionOverlay" class="menuOverlay hidden">
-    <div class="menuSheet createActionSheet">
-      <div class="menuSheetHandle"></div>
-      <div class="menuSheetTitle"><strong>Create</strong><span>RAAZ par kuch naya share karo</span></div>
-      <button id="createActionPost" class="createActionItem"><span class="createActionIcon">＋</span><span><strong>Post</strong><small>Photo + caption</small></span></button>
-      <button id="createActionStory" class="createActionItem"><span class="createActionIcon">◉</span><span><strong>Story</strong><small>24 hours ke liye</small></span></button>
-      <button id="createActionReel" class="createActionItem"><span class="createActionIcon">▶</span><span><strong>Reel</strong><small>Short video</small></span></button>
-      <button id="createActionNote" class="createActionItem"><span class="createActionIcon">✎</span><span><strong>Note</strong><small>Quick thought</small></span></button>
-      <button id="closeCreateActionBtn" class="menuSheetBtn cancel">Close</button>
-    </div>
-  </div>
-
   <!-- APP DRAWER -->
-  <div id="raazMoreOverlay" class="menuOverlay hidden">
-    <div class="menuSheet appMenuSheet">
-      <div class="menuSheetHandle"></div>
-      <div class="menuSheetTitle"><strong>RAAZ</strong><span>Quick access</span></div>
-      <button id="openGroupsBtn" class="menuSheetBtn">👥 <span>Communities</span><small>Groups & channels</small></button>
-      <button id="openNotesBtn" class="menuSheetBtn">💭 <span>Notes</span><small>Share a quick thought</small></button>
-      <button id="openSettingsBtn" class="menuSheetBtn">⚙️ <span>Settings & Privacy</span><small>Account, privacy & experience</small></button>
-      <button id="moreLogoutBtn" class="menuSheetBtn danger">↪ <span>Log out</span></button>
-      <button id="closeMoreBtn" class="menuSheetBtn cancel">Cancel</button>
-    </div>
-  </div>
-
-  <!-- POST ACTION SHEET -->
-  <div id="postActionOverlay" class="menuOverlay hidden">
-    <div class="menuSheet postActionSheet">
-      <div class="menuSheetHandle"></div>
-      <strong id="postActionTitle" class="postActionTitle">Post options</strong>
-      <button id="editPostActionBtn" class="menuSheetBtn">✏️ Edit post</button>
-      <button id="deletePostActionBtn" class="menuSheetBtn danger">🗑 Delete post</button>
-      <button id="reportPostActionBtn" class="menuSheetBtn danger">⚑ Report post</button>
-      <button id="closePostActionBtn" class="menuSheetBtn cancel">Cancel</button>
-    </div>
-  </div>
+  <div id="raazMoreOverlay" class="menuOverlay hidden"><div class="menuSheet"><button id="openGroupsBtn" class="menuSheetBtn">👥 Groups & Channels</button><button id="openNotesBtn" class="menuSheetBtn">💭 Notes</button><button id="openSettingsBtn" class="menuSheetBtn">⚙️ Settings & Privacy</button><button id="closeMoreBtn" class="menuSheetBtn cancel">Cancel</button></div></div>
 
   <!-- BOTTOM SHEET MENU: chat item ke liye (Primary/Secondary, Block, Delete) -->
   <div id="chatItemMenuOverlay" class="menuOverlay hidden">
@@ -483,7 +444,7 @@
   <!-- QR Code generator -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
-  <script src="firebase-config.js?v=15.0.0"></script>
-  <script src="app.js?v=15.0.0"></script>
+  <script src="firebase-config.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

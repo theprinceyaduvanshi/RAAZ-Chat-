@@ -1,14 +1,12 @@
-// RAAZ Firebase Configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyAARXMEJobScjWMcXQW7ev0yT1SnL_cRj4",
-  authDomain: "raaz-chat-baedf.firebaseapp.com",
-  projectId: "raaz-chat-baedf",
-  storageBucket: "raaz-chat-baedf.appspot.com",
-  messagingSenderId: "1032992366982",
-  appId: "1:1032992366982:web:5642b4001b5ec7bd06cc07"
+  apiKey: "AIzaSyAgEUWI8qBLTobFK5P0s7ljeFN0hIJ96dw",
+  authDomain: "raaz-34b4d.firebaseapp.com",
+  projectId: "raaz-34b4d",
+  storageBucket: "raaz-34b4d.firebasestorage.app",
+  messagingSenderId: "984604144983",
+  appId: "1:984604144983:web:6fdc71386b241160eafa12"
 };
 
-// Firebase Initialize (compat version ke liye)
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();

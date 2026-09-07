@@ -209,14 +209,8 @@ function getChatId(uidA, uidB) {
 }
 
 function showScreen(screenEl) {
-  const allScreens = [authScreen, homeScreen, chatScreen, profileScreen, profileViewScreen, requestsScreen, blockedScreen, peopleListScreen,
-    document.getElementById("exploreScreen"), document.getElementById("reelsScreen"), document.getElementById("groupsScreen"),
-    document.getElementById("notesScreen"), document.getElementById("settingsScreen")];
-  allScreens.forEach(s => s?.classList.add("hidden"));
-  screenEl?.classList.remove("hidden");
-  if (typeof showRaazBottomNav === "function") {
-    showRaazBottomNav(!!screenEl && screenEl !== authScreen && screenEl !== chatScreen);
-  }
+  [authScreen, homeScreen, chatScreen, profileScreen, profileViewScreen, requestsScreen, blockedScreen, peopleListScreen].forEach(s => s.classList.add("hidden"));
+  screenEl.classList.remove("hidden");
 }
 
 // ================= FRIEND AVATAR LIVE SYNC =================
@@ -274,7 +268,7 @@ function startHeartbeat() {
 }
 
 function stopHeartbeat() {
-  if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+  if (heartbeatInterval) clearInterval(heartbeatInterval);
 }
 
 // ================= SIGN UP =================
@@ -339,8 +333,8 @@ function doLogout() {
   if (unsubscribeRequestsBadge) unsubscribeRequestsBadge();
   auth.signOut();
 }
-logoutBtn?.addEventListener("click", doLogout);
-logoutBtnHome?.addEventListener("click", doLogout);
+logoutBtn.addEventListener("click", doLogout);
+logoutBtnHome.addEventListener("click", doLogout);
 
 // ================= AUTH STATE WATCHER =================
 auth.onAuthStateChanged(async (user) => {
@@ -355,7 +349,6 @@ auth.onAuthStateChanged(async (user) => {
     }
 
     myUsernameDisplay.textContent = "@" + currentUsername;
-    syncBottomProfileAvatar();
 
     showScreen(homeScreen);
     showRaazBottomNav(true);
@@ -389,18 +382,16 @@ auth.onAuthStateChanged(async (user) => {
 
 
 // ================= HOME TABS =================
-let lastHomeTab = "feed";
 function showHomeTab(tab) {
-  lastHomeTab = tab === "chats" ? "chats" : "feed";
   const feedActive = tab === "feed";
   feedSection.classList.toggle("hidden", !feedActive);
   chatsSection.classList.toggle("hidden", feedActive);
-  feedTabBtn?.classList.toggle("active", feedActive);
-  chatsTabBtn?.classList.toggle("active", !feedActive);
+  feedTabBtn.classList.toggle("active", feedActive);
+  chatsTabBtn.classList.toggle("active", !feedActive);
 }
 
-feedTabBtn?.addEventListener("click", () => showHomeTab("feed"));
-chatsTabBtn?.addEventListener("click", () => showHomeTab("chats"));
+feedTabBtn.addEventListener("click", () => showHomeTab("feed"));
+chatsTabBtn.addEventListener("click", () => showHomeTab("chats"));
 
 function renderComposerIdentity() {
   const letter = (currentUserName || "R").charAt(0).toUpperCase();
@@ -454,9 +445,6 @@ function renderFeedFromCache() {
     const saved = window.raazSavedPostIds || new Set();
     posts = posts.filter(p => saved.has(p.id));
   }
-  if (window.raazProfileOnly) {
-    posts = posts.filter(p => p.data.uid === auth.currentUser?.uid);
-  }
   feedEmpty.classList.toggle("hidden", posts.length > 0);
   if (!posts.length) {
     feedEmpty.querySelector("h3").textContent = activeFeedFilter === "saved" ? "No saved posts" : activeFeedFilter === "following" ? "Following feed empty" : "RAAZ Feed";
@@ -493,9 +481,7 @@ async function listenForFeed() {
       feedCache = snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() }));
       renderFeedFromCache();
     }, (err) => {
-      console.warn("RAAZ feed listener:", err);
-      feedList.innerHTML = `<div class="feedEmpty feedErrorState"><div class="feedEmptyIcon">↻</div><h3>Feed abhi available nahi hai</h3><p>Connection ya account access check karke dobara try karo.</p><button class="primaryAction feedRetryBtn">Try again</button></div>`;
-      feedList.querySelector(".feedRetryBtn")?.addEventListener("click",()=>listenForFeed());
+      feedList.innerHTML = `<div class="feedEmpty"><div class="feedEmptyIcon">!</div><h3>Feed load nahi hua</h3><p>${escapeHtml(err.code || "Firestore error")} — ${escapeHtml(err.message || "Rules check karo.")}</p></div>`;
     });
 }
 
@@ -543,7 +529,7 @@ async function renderPostCard(postId, data) {
     }
   });
   if (isMine) card.querySelector(".postMoreBtn").addEventListener("click", async () => {
-    await openPostActions(postId, data, card);
+    if (confirm("Is post ko delete karna hai?")) await db.collection("posts").doc(postId).delete();
   });
   card.querySelector(".likeBtn").addEventListener("click", () => togglePostLike(postId, card));
   card.querySelector(".commentBtn").addEventListener("click", () => toggleComments(postId, card));
@@ -552,12 +538,6 @@ async function renderPostCard(postId, data) {
   card.querySelector(".shareBtn").addEventListener("click", () => sharePost(postId, data));
   card.querySelector(".commentComposer button").addEventListener("click", () => addPostComment(postId, card));
   card.querySelector(".commentComposer input").addEventListener("keydown", (e) => { if (e.key === "Enter") addPostComment(postId, card); });
-  let lastTap = 0;
-  card.querySelector(".postMedia")?.addEventListener("click", () => {
-    const now = Date.now();
-    if (now - lastTap < 360) togglePostLike(postId, card);
-    lastTap = now;
-  });
 
   const myUid = auth.currentUser.uid;
   const [likeSnap, commentSnap, mineLike] = await Promise.all([
@@ -570,46 +550,6 @@ async function renderPostCard(postId, data) {
   if (mineLike.exists) card.querySelector(".likeBtn").classList.add("liked");
   if (window.raazSavedPostIds && window.raazSavedPostIds.has(postId)) card.querySelector(".saveBtn").classList.add("saved");
 }
-
-let postActionTarget = null;
-function openPostActions(postId, data, card) {
-  postActionTarget = { postId, data, card };
-  const overlay = document.getElementById("postActionOverlay");
-  const title = document.getElementById("postActionTitle");
-  const edit = document.getElementById("editPostActionBtn");
-  const del = document.getElementById("deletePostActionBtn");
-  const report = document.getElementById("reportPostActionBtn");
-  const mine = data.uid === auth.currentUser?.uid;
-  if (title) title.textContent = mine ? "Your post" : "Post options";
-  edit?.classList.toggle("hidden", !mine);
-  del?.classList.toggle("hidden", !mine);
-  report?.classList.toggle("hidden", mine);
-  overlay?.classList.remove("hidden");
-}
-
-document.getElementById("closePostActionBtn")?.addEventListener("click",()=>document.getElementById("postActionOverlay")?.classList.add("hidden"));
-document.getElementById("postActionOverlay")?.addEventListener("click",e=>{if(e.target.id==="postActionOverlay")e.currentTarget.classList.add("hidden");});
-document.getElementById("editPostActionBtn")?.addEventListener("click",async()=>{
-  const t=postActionTarget;if(!t)return;
-  const next=prompt("Caption edit karo:",t.data.caption||"");if(next===null)return;
-  try{
-    const caption=next.trim();
-    await db.collection("posts").doc(t.postId).set({caption,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
-    const cached=feedCache.find(x=>x.id===t.postId);if(cached)cached.data.caption=caption;
-    document.getElementById("postActionOverlay")?.classList.add("hidden");
-    renderFeedFromCache();showRaazToast("Post updated","success");
-  }catch(e){showRaazToast(e.message||"Post update nahi hui","error");}
-});
-document.getElementById("deletePostActionBtn")?.addEventListener("click",async()=>{
-  const t=postActionTarget;if(!t||!confirm("Is post ko permanently delete karna hai?"))return;
-  try{await db.collection("posts").doc(t.postId).delete();document.getElementById("postActionOverlay")?.classList.add("hidden");showRaazToast("Post deleted","success");}
-  catch(e){showRaazToast(e.message||"Delete nahi hua","error");}
-});
-document.getElementById("reportPostActionBtn")?.addEventListener("click",async()=>{
-  const t=postActionTarget;if(!t)return;
-  try{await db.collection("reports").add({type:"post",targetId:t.postId,targetUid:t.data.uid,reporterUid:auth.currentUser.uid,reason:"user_report",status:"open",createdAt:firebase.firestore.FieldValue.serverTimestamp()});document.getElementById("postActionOverlay")?.classList.add("hidden");showRaazToast("Report submitted","success");}
-  catch(e){showRaazToast(e.message||"Report submit nahi hua","error");}
-});
 
 async function toggleSavePost(postId, card) {
   const uid = auth.currentUser.uid;
@@ -842,9 +782,7 @@ async function listenForStories() {
     await refreshFollowingIds();
     renderStoryRail();
   }, err => {
-    console.warn("RAAZ stories listener:", err);
-    storyRail.innerHTML = `<div class="storyLoading storyErrorState">Stories abhi available nahi hain <button class="storyRetryBtn">Retry</button></div>`;
-    storyRail.querySelector(".storyRetryBtn")?.addEventListener("click",()=>listenForStories());
+    storyRail.innerHTML = `<div class="storyLoading">Stories unavailable · ${escapeHtml(err.code || "Firestore error")}</div>`;
   });
 }
 function renderStoryRail() {
@@ -948,7 +886,7 @@ profileBtn.addEventListener("click", () => {
 
 profileBackBtn.addEventListener("click", () => {
   unattachStats(myStatsUnsub);
-  raazGoHome("feed");
+  showScreen(homeScreen);
 });
 
 function renderProfileAvatar() {
@@ -1374,14 +1312,14 @@ async function declineRequest(fromUid) {
 
 profileViewBackBtn.addEventListener("click", () => {
   unattachStats(viewStatsUnsub);
-  raazGoHome("feed");
+  showScreen(homeScreen);
 });
 // ================= REQUESTS SCREEN =================
 requestsBtn.addEventListener("click", () => {
   loadRequestsScreen();
   showScreen(requestsScreen);
 });
-requestsBackBtn.addEventListener("click", () => raazGoHome("feed"));
+requestsBackBtn.addEventListener("click", () => showScreen(homeScreen));
 
 function loadRequestsScreen() {
   const myUid = auth.currentUser.uid;
@@ -1458,11 +1396,11 @@ async function unblockUser(uid) {
   await db.collection("users").doc(myUid).collection("blocked").doc(uid).delete();
 }
 
-blockedListBtn?.addEventListener("click", () => {
+blockedListBtn.addEventListener("click", () => {
   loadBlockedScreen();
   showScreen(blockedScreen);
 });
-blockedBackBtn.addEventListener("click", () => { showScreen(profileScreen); document.querySelectorAll(".raazNav").forEach(b=>b.classList.toggle("active",b.dataset.raazNav==="profile")); });
+blockedBackBtn.addEventListener("click", () => showScreen(profileScreen));
 
 function loadBlockedScreen() {
   const myUid = auth.currentUser.uid;
@@ -1542,7 +1480,7 @@ function listenForChatList() {
       });
 
       secondarySectionLabel.classList.toggle("hidden", secondaryCount === 0);
-      primarySectionLabel.classList.toggle("hidden", primaryCount === 0);
+      primarySectionLabel.classList.toggle("hidden", secondaryCount === 0);
 
       updateChatListEmptyVisibility(primaryCount + secondaryCount === 0);
     });
@@ -1699,7 +1637,7 @@ backBtn.addEventListener("click", () => {
   clearTypingStatus();
   currentChatId = null;
   currentFriendUid = null;
-  raazGoHome(lastHomeTab);
+  showScreen(homeScreen);
 });
 
 // ================= TYPING INDICATOR =================
@@ -1875,48 +1813,26 @@ const privateAccountToggle = document.getElementById("privateAccountToggle");
 const activityStatusToggle = document.getElementById("activityStatusToggle");
 const messageRequestsToggle = document.getElementById("messageRequestsToggle");
 const reduceMotionToggle = document.getElementById("reduceMotionToggle");
-const compactUiToggle = document.getElementById("compactUiToggle");
-const autoplayReelsToggle = document.getElementById("autoplayReelsToggle");
-const raazThemeSelect = document.getElementById("raazThemeSelect");
-const bottomProfileAvatar = document.getElementById("bottomProfileAvatar");
-const raazToast = document.getElementById("raazToast");
-const raazOfflineBar = document.getElementById("raazOfflineBar");
 let activeExploreFilter = "all";
 let unsubscribeReels = null, unsubscribeGroups = null, unsubscribeNotes = null;
 
 function showRaazBottomNav(show){ raazBottomNav?.classList.toggle("hidden", !show); }
 function hideFeatureScreens(){ [exploreScreen,reelsScreen,groupsScreen,notesScreen,settingsScreen].forEach(x=>x?.classList.add("hidden")); }
 function raazGoHome(tab="feed"){
-  window.raazProfileOnly = false;
-  hideFeatureScreens(); showRaazBottomNav(true); showScreen(homeScreen);
-  showHomeTab(tab === "chats" ? "chats" : "feed");
+  hideFeatureScreens(); showRaazBottomNav(true); showScreen(homeScreen); if(tab==="chats") chatsTabBtn.click(); else feedTabBtn.click();
   document.querySelectorAll(".raazNav").forEach(b=>b.classList.toggle("active", b.dataset.raazNav===tab));
 }
 function raazGoFeature(screen, nav){ hideFeatureScreens(); screen?.classList.remove("hidden"); showRaazBottomNav(true); document.querySelectorAll(".raazNav").forEach(b=>b.classList.toggle("active", b.dataset.raazNav===nav)); }
 
-function setActiveRaazNav(name){
-  document.querySelectorAll(".raazNav").forEach(b=>b.classList.toggle("active", b.dataset.raazNav===name));
-}
-
-function raazNavigate(name){
-  if (!auth.currentUser) return;
-  try {
-    if(name === "feed") return raazGoHome("feed");
-    if(name === "chats") return raazGoHome("chats");
-    if(name === "create") return openRaazCreateSheet();
-    if(name === "explore"){ raazGoFeature(exploreScreen,"explore"); setActiveRaazNav("explore"); renderExplore(""); return; }
-    if(name === "reels"){ raazGoFeature(reelsScreen,"reels"); setActiveRaazNav("reels"); listenForReels(); return; }
-    if(name === "profile"){ hideFeatureScreens(); profileBtn?.click(); setActiveRaazNav("profile"); return; }
-  } catch(err) {
-    console.error("RAAZ navigation error", name, err);
-    showRaazToast?.("Screen open nahi ho paayi. Dobara try karo.", "error");
-  }
-}
-
-document.querySelectorAll(".raazNav").forEach(btn=>btn.addEventListener("click", (event)=>{
-  event.preventDefault();
-  raazNavigate(btn.dataset.raazNav);
-}, {passive:false}));
+document.querySelectorAll(".raazNav").forEach(btn=>btn.addEventListener("click",()=>{
+  const n=btn.dataset.raazNav;
+  if(n==="feed") return raazGoHome("feed");
+  if(n==="chats") return raazGoHome("chats");
+  if(n==="create") return openCreatePostBtn?.click();
+  if(n==="explore"){ raazGoFeature(exploreScreen,"explore"); renderExplore(""); }
+  if(n==="reels"){ raazGoFeature(reelsScreen,"reels"); listenForReels(); }
+  if(n==="profile"){ hideFeatureScreens(); profileBtn?.click(); }
+}));
 
 document.getElementById("exploreBackBtn")?.addEventListener("click",()=>raazGoHome("feed"));
 document.getElementById("reelsBackBtn")?.addEventListener("click",()=>raazGoHome("feed"));
@@ -1965,7 +1881,7 @@ function listenForReels(){
       c.className="reelCard";
       const media=d.videoUrl||d.videoBase64||"";
       c.innerHTML=`
-        <video src="${escapeHtml(media)}" class="reelVideo" playsinline controls loop muted preload="metadata"></video>
+        <video src="${escapeHtml(media)}" playsinline controls loop preload="metadata"></video>
         <div class="reelOverlay"><strong>@${escapeHtml(d.username||"user")}</strong><small>${escapeHtml(d.caption||"")}</small></div>
         <div class="reelActions">
           <button class="reelLike" type="button">♥ <span>${Number(d.likeCount||0)}</span></button>
@@ -1978,7 +1894,6 @@ function listenForReels(){
       reelsList.appendChild(c);
       hydrateReelLikeState(doc.id,c);
     }
-    setupReelAutoplay();
   },e=>{
     reelsList.innerHTML=`<div class="featureEmpty"><h3>Reels unavailable</h3><p>${escapeHtml(e.code||e.message||"Firestore error")}</p></div>`;
   });
@@ -2082,71 +1997,16 @@ document.getElementById("groupTypeGroup")?.addEventListener("click",()=>{documen
 async function listenForNotes(){if(unsubscribeNotes)unsubscribeNotes();unsubscribeNotes=db.collection("notes").orderBy("createdAt","desc").limit(50).onSnapshot(s=>{notesList.innerHTML="";s.forEach(doc=>{const d=doc.data(),c=document.createElement("div");c.className="noteCard";c.innerHTML=`<strong>${escapeHtml(d.name||"User")} <small>@${escapeHtml(d.username||"user")}</small></strong><div>${escapeHtml(d.text||"")}</div><small>${formatPostTime(d.createdAt)}</small>`;notesList.appendChild(c);});},()=>{});}
 document.getElementById("publishNoteBtn")?.addEventListener("click",async()=>{const text=document.getElementById("noteInput").value.trim();if(!text)return;try{await db.collection("notes").add({uid:auth.currentUser.uid,name:currentUserName,username:currentUsername,text,createdAt:firebase.firestore.FieldValue.serverTimestamp(),expiresAt:firebase.firestore.Timestamp.fromDate(new Date(Date.now()+86400000))});document.getElementById("noteInput").value="";}catch(e){alert(e.message||"Note share nahi hui.");}});
 
-function loadRaazSettings(){
-  const p=localStorage.getItem("raaz.privateAccount")==="1",a=localStorage.getItem("raaz.activity")!=="0",m=localStorage.getItem("raaz.requests")!=="0",r=localStorage.getItem("raaz.reduceMotion")==="1",c=localStorage.getItem("raaz.compactUi")==="1",ap=localStorage.getItem("raaz.autoplayReels")!=="0",theme=localStorage.getItem("raaz.theme")||"midnight";
-  if(privateAccountToggle)privateAccountToggle.checked=p;if(activityStatusToggle)activityStatusToggle.checked=a;if(messageRequestsToggle)messageRequestsToggle.checked=m;if(reduceMotionToggle)reduceMotionToggle.checked=r;if(compactUiToggle)compactUiToggle.checked=c;if(autoplayReelsToggle)autoplayReelsToggle.checked=ap;if(raazThemeSelect)raazThemeSelect.value=theme;
-  document.documentElement.classList.toggle("reduceMotion",r);document.documentElement.classList.toggle("compactUi",c);document.documentElement.dataset.raazTheme=theme;
-}
-[[privateAccountToggle,"raaz.privateAccount"],[activityStatusToggle,"raaz.activity"],[messageRequestsToggle,"raaz.requests"],[reduceMotionToggle,"raaz.reduceMotion"],[compactUiToggle,"raaz.compactUi"],[autoplayReelsToggle,"raaz.autoplayReels"]].forEach(([el,key])=>el?.addEventListener("change",()=>{localStorage.setItem(key,el.checked?"1":"0");if(key==="raaz.reduceMotion")document.documentElement.classList.toggle("reduceMotion",el.checked);if(key==="raaz.compactUi")document.documentElement.classList.toggle("compactUi",el.checked);}));
+function loadRaazSettings(){const p=localStorage.getItem("raaz.privateAccount")==="1",a=localStorage.getItem("raaz.activity")!=="0",m=localStorage.getItem("raaz.requests")!=="0",r=localStorage.getItem("raaz.reduceMotion")==="1";if(privateAccountToggle)privateAccountToggle.checked=p;if(activityStatusToggle)activityStatusToggle.checked=a;if(messageRequestsToggle)messageRequestsToggle.checked=m;if(reduceMotionToggle)reduceMotionToggle.checked=r;document.documentElement.classList.toggle("reduceMotion",r);}
+[[privateAccountToggle,"raaz.privateAccount"],[activityStatusToggle,"raaz.activity"],[messageRequestsToggle,"raaz.requests"],[reduceMotionToggle,"raaz.reduceMotion"]].forEach(([el,key])=>el?.addEventListener("change",()=>{localStorage.setItem(key,el.checked?"1":"0");if(key==="raaz.reduceMotion")document.documentElement.classList.toggle("reduceMotion",el.checked);}));
 loadRaazSettings();
-raazThemeSelect?.addEventListener("change",()=>{const v=raazThemeSelect.value||"midnight";localStorage.setItem("raaz.theme",v);document.documentElement.dataset.raazTheme=v;showRaazToast("Theme updated","success");});
-document.getElementById("openMyProfileFromSettings")?.addEventListener("click",()=>profileBtn?.click());
-document.getElementById("openBlockedFromSettings")?.addEventListener("click",()=>{ loadBlockedScreen(); showScreen(blockedScreen); document.querySelectorAll(".raazNav").forEach(b=>b.classList.toggle("active",b.dataset.raazNav==="profile")); });
-document.getElementById("clearSearchHistoryBtn")?.addEventListener("click",()=>{localStorage.removeItem("raaz.searchHistory");alert("Search history clear ho gayi.");});
-
-// ================= RAAZ V13 PROFESSIONAL UX SYSTEM =================
-// One source of truth for creation actions; prevents duplicate/competing entry points.
-const createActionOverlay = document.getElementById("createActionOverlay");
-const createActionPost = document.getElementById("createActionPost");
-const createActionStory = document.getElementById("createActionStory");
-const createActionReel = document.getElementById("createActionReel");
-const createActionNote = document.getElementById("createActionNote");
-const closeCreateActionBtn = document.getElementById("closeCreateActionBtn");
-function openRaazCreateSheet(){
-  createActionOverlay?.classList.remove("hidden");
-}
-function closeRaazCreateSheet(){
-  createActionOverlay?.classList.add("hidden");
-}
-function openCreatePostProfessional(){ closeRaazCreateSheet(); openCreatePostBtn?.click(); }
-function openCreateStoryProfessional(){ closeRaazCreateSheet(); openCreateStoryBtn?.click(); }
-function openCreateReelProfessional(){ closeRaazCreateSheet(); document.getElementById("createReelOverlay")?.classList.remove("hidden"); }
-function openCreateNoteProfessional(){ closeRaazCreateSheet(); raazGoFeature(notesScreen,"create"); document.getElementById("noteInput")?.focus(); }
-
-createActionPost?.addEventListener("click", openCreatePostProfessional);
-createActionStory?.addEventListener("click", openCreateStoryProfessional);
-createActionReel?.addEventListener("click", openCreateReelProfessional);
-createActionNote?.addEventListener("click", openCreateNoteProfessional);
-closeCreateActionBtn?.addEventListener("click", closeRaazCreateSheet);
-createActionOverlay?.addEventListener("click", e=>{ if(e.target===createActionOverlay) closeRaazCreateSheet(); });
-
-// Keep the old hidden compatibility buttons functional, but never show them as duplicate UI.
-profileBtn?.classList.add("hidden");
-logoutBtnHome?.classList.add("hidden");
-
-
-// Profile shortcut: only My Posts / Saved / Edit Profile. Communities, Notes and Settings live elsewhere.
-document.getElementById("profileSavedBtn")?.addEventListener("click",()=>{
-  window.raazProfileOnly=false;
-  raazGoHome("feed");
-  setTimeout(()=>document.querySelector('.feedFilter[data-feed-filter="saved"]')?.click(),50);
-});
-
-// Avoid scroll bleed when any modal/sheet is open.
-function updateBodyOverlayLock(){
-  const open=[createActionOverlay,createPostOverlay,createStoryOverlay,storyViewerOverlay,notificationsOverlay,document.getElementById("createReelOverlay"),document.getElementById("createGroupOverlay"),document.getElementById("reelCommentsOverlay"),document.getElementById("raazMoreOverlay"),chatItemMenuOverlay].some(el=>el&&!el.classList.contains("hidden"));
-  document.body.classList.toggle("overlayOpen",open);
-}
-new MutationObserver(updateBodyOverlayLock).observe(document.body,{subtree:true,attributes:true,attributeFilter:["class"]});
-updateBodyOverlayLock();
+document.getElementById("openMyProfileFromSettings")?.addEventListener("click",()=>profileBtn.click());document.getElementById("openBlockedFromSettings")?.addEventListener("click",()=>blockedListBtn.click());document.getElementById("clearSearchHistoryBtn")?.addEventListener("click",()=>{localStorage.removeItem("raaz.searchHistory");alert("Search history clear ho gayi.");});
 
 // Quick access to community/settings without changing existing chat architecture.
 window.openRaazGroups=()=>{raazGoFeature(groupsScreen,"more");listenForGroups();};
 window.openRaazNotes=()=>{raazGoFeature(notesScreen,"more");listenForNotes();};
 window.openRaazSettings=()=>{raazGoFeature(settingsScreen,"more");loadRaazSettings();};
 document.getElementById("openMoreBtn")?.addEventListener("click",()=>document.getElementById("raazMoreOverlay")?.classList.remove("hidden"));
-document.getElementById("moreLogoutBtn")?.addEventListener("click",()=>{document.getElementById("raazMoreOverlay")?.classList.add("hidden");doLogout();});
-document.getElementById("settingsLogoutBtn")?.addEventListener("click",()=>{if(confirm("RAAZ se logout karna hai?"))doLogout();});
 document.getElementById("openGroupsBtn")?.addEventListener("click",()=>{document.getElementById("raazMoreOverlay").classList.add("hidden");openRaazGroups();});document.getElementById("openNotesBtn")?.addEventListener("click",()=>{document.getElementById("raazMoreOverlay").classList.add("hidden");openRaazNotes();});document.getElementById("openSettingsBtn")?.addEventListener("click",()=>{document.getElementById("raazMoreOverlay").classList.add("hidden");openRaazSettings();});document.getElementById("closeMoreBtn")?.addEventListener("click",()=>document.getElementById("raazMoreOverlay").classList.add("hidden"));
 
 // Repost support on current post cards.
@@ -2154,313 +2014,7 @@ async function repostPost(postId,data){const uid=auth.currentUser.uid;if(data.ui
 window.repostPost=repostPost;
 
 
-document.getElementById("profileEditActionBtn")?.addEventListener("click",()=>{
-  document.getElementById("editUsernameBox")?.classList.remove("hidden");
-  document.getElementById("editBioBox")?.classList.remove("hidden");
-  document.getElementById("newUsernameInput")?.focus();
-});
-document.getElementById("profilePostsBtn")?.addEventListener("click",()=>{
-  window.raazProfileOnly=true; activeFeedFilter="all"; feedFilters.forEach(b=>b.classList.toggle("active",b.dataset.feedFilter==="all"));
-  raazGoHome("feed"); renderFeedFromCache();
-});
-
-
-// ================= RAAZ V13 PROFESSIONAL UX HELPERS =================
-let raazToastTimer = null;
-function showRaazToast(message, type="") {
-  if (!raazToast) return;
-  raazToast.textContent = message || "Done";
-  raazToast.className = `raazToast show ${type}`.trim();
-  clearTimeout(raazToastTimer);
-  raazToastTimer = setTimeout(() => raazToast.className = "raazToast", 2400);
-}
-window.showRaazToast = showRaazToast;
-
-function syncBottomProfileAvatar() {
-  if (!bottomProfileAvatar) return;
-  if (currentPhotoBase64) {
-    bottomProfileAvatar.style.backgroundImage = `url(${currentPhotoBase64})`;
-    bottomProfileAvatar.textContent = "";
-  } else {
-    bottomProfileAvatar.style.backgroundImage = "none";
-    bottomProfileAvatar.textContent = (currentUserName || "R").charAt(0).toUpperCase();
-  }
-}
-
-window.addEventListener("online", () => { raazOfflineBar?.classList.add("hidden"); showRaazToast("Internet connected", "success"); });
-window.addEventListener("offline", () => { raazOfflineBar?.classList.remove("hidden"); showRaazToast("You are offline", "error"); });
-if (!navigator.onLine) raazOfflineBar?.classList.remove("hidden");
-
-function setupReelAutoplay() {
-  const videos = [...document.querySelectorAll("#reelsList .reelVideo")];
-  if (!videos.length) return;
-  videos.forEach(v => { v.muted = true; v.playsInline = true; });
-  if (!("IntersectionObserver" in window)) return;
-  if (window.raazReelObserver) window.raazReelObserver.disconnect();
-  const enabled = localStorage.getItem("raaz.autoplayReels") !== "0";
-  window.raazReelObserver = new IntersectionObserver(entries => {
-    entries.forEach(entry => {
-      const v = entry.target;
-      if (enabled && entry.isIntersecting && entry.intersectionRatio >= .72) {
-        v.play().catch(() => {});
-      } else {
-        v.pause();
-      }
-    });
-  }, { threshold:[.25,.72,.9] });
-  videos.forEach(v => window.raazReelObserver.observe(v));
-}
-
-// Keep the current user's avatar in the single Profile destination.
-const _oldRenderComposerIdentity = window.renderComposerIdentity;
-window.addEventListener("load", () => { setTimeout(syncBottomProfileAvatar, 400); });
-
-// Patch the existing profile renderer without changing its data architecture.
-if (typeof renderProfileAvatar === "function") {
-  const _renderProfileAvatarV13 = renderProfileAvatar;
-  window.renderProfileAvatar = function(){ _renderProfileAvatarV13(); syncBottomProfileAvatar(); };
-}
-
-// Improve navigation semantics: tapping Home always returns to the feed, not a stale profile-only view.
-document.querySelector('[data-raaz-nav="feed"]')?.addEventListener("click",()=>{window.raazProfileOnly=false;});
-
-
-// ================= RAAZ V14 INTERACTION / STABILITY LAYER =================
-// Prevent one broken optional element from stopping the rest of the interface.
-(function installRaazInteractionGuard(){
-  document.querySelectorAll("button").forEach(btn => {
-    if (!btn.getAttribute("type")) btn.setAttribute("type", "button");
-    btn.style.touchAction = "manipulation";
-  });
-
-  window.addEventListener("error", (event) => {
-    console.error("RAAZ runtime error:", event.error || event.message);
-    if (typeof showRaazToast === "function") showRaazToast("Kuch issue hua. Screen refresh karke try karo.", "error");
-  });
-
-  window.addEventListener("unhandledrejection", (event) => {
-    console.error("RAAZ async error:", event.reason);
-    if (typeof showRaazToast === "function") showRaazToast("Action complete nahi ho paaya. Dobara try karo.", "error");
-  });
-
-  // Close sheets with Android back button when possible.
-  window.addEventListener("popstate", () => {
-    const overlays = ["createActionOverlay","raazMoreOverlay","createPostOverlay","createStoryOverlay","createReelOverlay","createGroupOverlay","reelCommentsOverlay","notificationsOverlay","postActionOverlay","chatItemMenuOverlay","storyViewerOverlay"];
-    for (const id of overlays) {
-      const el=document.getElementById(id);
-      if(el && !el.classList.contains("hidden")){ el.classList.add("hidden"); return; }
-    }
-  });
-})();
-
-
-// ================= RAAZ V15 — FINAL FUNCTIONAL STABILITY LAYER =================
-// Goal: existing architecture ko preserve karte hue every user action ko resilient banana.
-(function installRaazV15Stability(){
-  const qs = (s) => document.querySelector(s);
-  const byId = (id) => document.getElementById(id);
-
-  function v15Message(err, fallback){
-    const code = err?.code || "";
-    if (code === "permission-denied") return "Firebase access permission abhi enable nahi hai.";
-    if (code === "failed-precondition") return "Firebase configuration/index check karna hoga.";
-    if (code === "unavailable") return "Internet/Firebase temporarily unavailable hai.";
-    if (code === "unauthenticated") return "Session expire ho gaya. Dobara login karo.";
-    return err?.message || fallback;
-  }
-  window.raazV15ErrorMessage = v15Message;
-
-  async function safeAction(action, fallback="Action complete nahi hua.", success=""){
-    if (!auth.currentUser){ showRaazToast?.("Pehle login karo.", "error"); return false; }
-    try { await action(); if(success) showRaazToast?.(success,"success"); return true; }
-    catch(err){ console.error("RAAZ V15 action:", err); showRaazToast?.(v15Message(err,fallback),"error"); return false; }
-  }
-  window.raazSafeAction = safeAction;
-
-  // -------- Profile: direct navigation, hidden legacy button par dependency nahi --------
-  function openMyProfileV15(){
-    if (!auth.currentUser) return;
-    try {
-      renderProfileAvatar();
-      profileName.textContent = currentUserName || "RAAZ User";
-      profileUsername.textContent = "@" + (currentUsername || "user");
-      profileEmail.textContent = auth.currentUser.email || "";
-      bioDisplay.textContent = currentBio || "Bio nahi likha hai abhi";
-      if (qrcodeBox) {
-        qrcodeBox.innerHTML = "";
-        if (typeof QRCode === "function") {
-          const appUrl = window.location.href.split("?")[0].split("#")[0];
-          new QRCode(qrcodeBox,{text:appUrl,width:180,height:180,colorDark:"#1a0000",colorLight:"#ffffff"});
-        } else qrcodeBox.textContent = "QR unavailable";
-      }
-      attachFollowStats(auth.currentUser.uid,myFollowersCount,myFollowingCount,myStatsUnsub);
-      showScreen(profileScreen);
-      setActiveRaazNav?.("profile");
-    } catch(err){ console.error(err); showRaazToast?.(v15Message(err,"Profile open nahi ho paayi."),"error"); }
-  }
-  window.openMyProfileV15 = openMyProfileV15;
-
-  // Replace the old hidden-button dependency used by bottom Profile navigation.
-  raazNavigate = function(name){
-    if (!auth.currentUser) return;
-    try {
-      if(name === "feed") { window.raazProfileOnly=false; return raazGoHome("feed"); }
-      if(name === "chats") return raazGoHome("chats");
-      if(name === "create") return openRaazCreateSheet();
-      if(name === "explore") { raazGoFeature(exploreScreen,"explore"); renderExplore(""); return; }
-      if(name === "reels") { raazGoFeature(reelsScreen,"reels"); listenForReels(); return; }
-      if(name === "profile") { hideFeatureScreens(); openMyProfileV15(); return; }
-    } catch(err){ console.error("V15 navigation",err); showRaazToast?.(v15Message(err,"Screen open nahi ho paayi."),"error"); }
-  };
-
-  // -------- Create entry points: one canonical path --------
-  window.openCreateNoteProfessional = function(){
-    closeRaazCreateSheet();
-    raazGoFeature(notesScreen,"create");
-    listenForNotes?.();
-    byId("noteInput")?.focus();
-  };
-
-  // -------- Feed: never let one engagement read kill a post card --------
-  const originalRenderPostCard = renderPostCard;
-  renderPostCard = async function(postId,data){
-    try { return await originalRenderPostCard(postId,data); }
-    catch(err){
-      console.error("Post card hydration failed",postId,err);
-      const card = qs(`[data-post-id="${CSS.escape(postId)}"]`);
-      if(card){
-        const like=card.querySelector(".likeCount"), comment=card.querySelector(".commentCount");
-        if(like && !like.textContent) like.textContent="0";
-        if(comment && !comment.textContent) comment.textContent="0";
-      }
-      return null;
-    }
-  };
-
-  // -------- Follow: prevent double taps + surface backend errors --------
-  renderFollowButton = async function(uid,data){
-    const area=followBtnArea; if(!area || !auth.currentUser) return;
-    area.innerHTML='<p class="error">Check ho raha hai...</p>';
-    try{
-      const myUid=auth.currentUser.uid;
-      const snap=await db.collection("users").doc(myUid).collection("following").doc(uid).get();
-      const following=snap.exists;
-      area.innerHTML=`<button id="followToggleBtn" class="followBtn ${following?'following':''}" type="button">${following?'✓ Following':'+ Follow'}</button>`;
-      const btn=byId("followToggleBtn");
-      btn?.addEventListener("click",async()=>{
-        if(btn.disabled)return;
-        btn.disabled=true;
-        const ok=await safeAction(async()=>{
-          if(following) await unfollowUser(uid); else await followUser(uid,data.name,data.username);
-        },"Follow action complete nahi hua.",following?"Unfollowed":"Following");
-        if(ok) await renderFollowButton(uid,data);
-        else btn.disabled=false;
-      });
-    }catch(err){ area.innerHTML=`<p class="error">${escapeHtml(v15Message(err,"Follow status load nahi hua."))}</p>`; }
-  };
-
-  // -------- Followers/following list: proper error state --------
-  loadPeopleList = async function(uid,type){
-    peopleListContainer.innerHTML='<div class="chatListEmpty">Load ho raha hai...</div>';
-    peopleListEmpty.classList.add("hidden");
-    try{
-      const snap=await db.collection("users").doc(uid).collection(type).orderBy("followedAt","desc").get();
-      peopleListEmpty.classList.toggle("hidden",!snap.empty);
-      peopleListContainer.innerHTML="";
-      snap.forEach(doc=>{
-        const d=doc.data()||{};
-        const personUid=type==="followers"?d.followerUid:d.targetUid;
-        const personName=type==="followers"?d.followerName:d.targetName;
-        const personUsername=type==="followers"?d.followerUsername:d.targetUsername;
-        if(!personUid)return;
-        const item=document.createElement("div"); item.className="chatListItem";
-        item.innerHTML=`<div class="chatListAvatar" data-avatar-uid="${escapeHtml(personUid)}" data-fallback-letter="${escapeHtml(personName||"R")}">${escapeHtml((personName||"R").charAt(0).toUpperCase())}</div><div class="chatListText"><div class="chatListName">${escapeHtml(personName||"User")}</div><div class="chatListLastMsg">@${escapeHtml(personUsername||"user")}</div></div>`;
-        item.addEventListener("click",()=>safeAction(async()=>{const fresh=await db.collection("users").doc(personUid).get();if(fresh.exists)openProfileView(personUid,fresh.data());},"Profile load nahi hua."));
-        peopleListContainer.appendChild(item); watchFriendAvatar(personUid);
-      });
-    }catch(err){ peopleListContainer.innerHTML=`<div class="chatListEmpty">${escapeHtml(v15Message(err,"List load nahi hui."))}<br><button type="button" class="primaryAction v15RetryPeople">Retry</button></div>`; qs(".v15RetryPeople")?.addEventListener("click",()=>loadPeopleList(uid,type)); }
-  };
-
-  // -------- Blocked users: unsubscribe old listener before opening again --------
-  let v15BlockedUnsub=null;
-  loadBlockedScreen = function(){
-    if(v15BlockedUnsub) v15BlockedUnsub();
-    const myUid=auth.currentUser?.uid; if(!myUid)return;
-    blockedList.innerHTML='<div class="chatListEmpty">Load ho raha hai...</div>';
-    v15BlockedUnsub=db.collection("users").doc(myUid).collection("blocked").onSnapshot(snapshot=>{
-      blockedList.innerHTML=""; blockedEmpty.classList.toggle("hidden",!snapshot.empty);
-      snapshot.forEach(doc=>{
-        const d=doc.data()||{}, name=d.name||"User", username=d.username||"user";
-        const item=document.createElement("div"); item.className="chatListItem";
-        item.innerHTML=`<div class="chatListAvatar" data-avatar-uid="${doc.id}" data-fallback-letter="${escapeHtml(name)}">${escapeHtml(name.charAt(0).toUpperCase())}</div><div class="chatListText"><div class="chatListName">${escapeHtml(name)}</div><div class="chatListLastMsg">@${escapeHtml(username)}</div></div><button class="unblockBtn" type="button">Unblock</button>`;
-        item.querySelector(".unblockBtn")?.addEventListener("click",async()=>{
-          await safeAction(()=>unblockUser(doc.id),"Unblock nahi hua.","User unblocked");
-        });
-        blockedList.appendChild(item); watchFriendAvatar(doc.id);
-      });
-    },err=>{ blockedList.innerHTML=`<div class="chatListEmpty">${escapeHtml(v15Message(err,"Blocked list load nahi hui."))}<br><button type="button" class="primaryAction v15RetryBlocked">Retry</button></div>`; qs(".v15RetryBlocked")?.addEventListener("click",loadBlockedScreen); });
-  };
-
-  // -------- Requests: single listener, clean error/retry --------
-  let v15RequestsUnsub=null;
-  loadRequestsScreen = function(){
-    if(v15RequestsUnsub)v15RequestsUnsub();
-    const myUid=auth.currentUser?.uid; if(!myUid)return;
-    requestsList.innerHTML='<div class="chatListEmpty">Requests load ho rahi hain...</div>';
-    v15RequestsUnsub=db.collection("users").doc(myUid).collection("requestsReceived").orderBy("createdAt","desc").onSnapshot(snapshot=>{
-      requestsList.innerHTML=""; requestsEmpty.classList.toggle("hidden",!snapshot.empty);
-      snapshot.forEach(doc=>{
-        const d=doc.data()||{}, name=d.fromName||"User", username=d.fromUsername||"user";
-        const item=document.createElement("div"); item.className="chatListItem";
-        item.innerHTML=`<div class="chatListAvatar" data-avatar-uid="${doc.id}" data-fallback-letter="${escapeHtml(name)}">${escapeHtml(name.charAt(0).toUpperCase())}</div><div class="chatListText"><div class="chatListName">${escapeHtml(name)}</div><div class="chatListLastMsg">@${escapeHtml(username)}</div></div><div class="requestBtns"><button class="reqAcceptBtn" type="button">✅</button><button class="reqDeclineBtn" type="button">✖</button></div>`;
-        item.querySelector(".reqAcceptBtn")?.addEventListener("click",async e=>{e.stopPropagation();await safeAction(()=>acceptRequest(d.fromUid,d.fromName,d.fromUsername),"Request accept nahi hui.","Request accepted");});
-        item.querySelector(".reqDeclineBtn")?.addEventListener("click",async e=>{e.stopPropagation();await safeAction(()=>declineRequest(d.fromUid),"Request decline nahi hui.","Request declined");});
-        requestsList.appendChild(item); watchFriendAvatar(d.fromUid);
-      });
-    },err=>{ requestsList.innerHTML=`<div class="chatListEmpty">${escapeHtml(v15Message(err,"Requests load nahi hui."))}<br><button type="button" class="primaryAction v15RetryRequests">Retry</button></div>`; qs(".v15RetryRequests")?.addEventListener("click",loadRequestsScreen); });
-  };
-
-  // -------- Chat list: fix empty/error state without changing chat architecture --------
-  const originalListenForChatList = listenForChatList;
-  listenForChatList = function(){
-    try { originalListenForChatList(); }
-    catch(err){
-      console.error(err);
-      chatListPrimary.innerHTML=""; chatListSecondary.innerHTML="";
-      chatListEmpty.classList.remove("hidden");
-      chatListEmpty.innerHTML=`Chats load nahi hui.<br><button type="button" class="primaryAction v15RetryChats">Retry</button>`;
-      qs(".v15RetryChats")?.addEventListener("click",()=>listenForChatList());
-    }
-  };
-
-  // -------- Feature listeners should never fail silently --------
-  const originalListenGroups=listenForGroups;
-  listenForGroups=function(){
-    try { return originalListenGroups(); } catch(err){ console.error(err); if(groupsList)groupsList.innerHTML=`<div class="featureEmpty"><h3>Communities unavailable</h3><p>${escapeHtml(v15Message(err,"Communities load nahi hui."))}</p></div>`; }
-  };
-  const originalListenNotes=listenForNotes;
-  listenForNotes=function(){
-    try { return originalListenNotes(); } catch(err){ console.error(err); if(notesList)notesList.innerHTML=`<div class="featureEmpty"><h3>Notes unavailable</h3><p>${escapeHtml(v15Message(err,"Notes load nahi hui."))}</p></div>`; }
-  };
-
-  // Make post image/media links safe and prevent accidental drag navigation.
-  document.querySelectorAll("img,video").forEach(el=>{ el.draggable=false; });
-
-  // Modal/sheet UX: Escape closes the topmost overlay.
-  document.addEventListener("keydown",e=>{
-    if(e.key!=="Escape")return;
-    const ids=["storyViewerOverlay","reelCommentsOverlay","createPostOverlay","createStoryOverlay","createReelOverlay","createGroupOverlay","notificationsOverlay","postActionOverlay","chatItemMenuOverlay","createActionOverlay","raazMoreOverlay"];
-    for(const id of ids){const el=byId(id);if(el&&!el.classList.contains("hidden")){el.classList.add("hidden");e.preventDefault();break;}}
-  });
-
-  // Ensure all visible nav buttons use button semantics.
-  document.querySelectorAll(".raazNav").forEach(b=>{b.type="button";b.setAttribute("aria-label",b.querySelector("span:last-child")?.textContent||"RAAZ navigation");});
-
-  // Settings should persist immediately and load on opening.
-  window.openRaazSettingsV15=()=>{ hideFeatureScreens(); raazGoFeature(settingsScreen,"more"); loadRaazSettings(); };
-
-  // Keep service-worker cache/session clean on sign-out.
-  window.addEventListener("beforeunload",()=>{ if(v15BlockedUnsub)v15BlockedUnsub(); });
-
-  console.info("RAAZ V15 Functional Stability layer ready");
-})();
+document.getElementById("profileGroupsBtn")?.addEventListener("click",()=>openRaazGroups());
+document.getElementById("profileNotesBtn")?.addEventListener("click",()=>openRaazNotes());
+document.getElementById("profileSettingsBtn")?.addEventListener("click",()=>openRaazSettings());
+document.getElementById("profilePostsBtn")?.addEventListener("click",()=>{raazGoHome("feed");setTimeout(()=>{document.querySelectorAll(".postCard").forEach(c=>{const p=feedCache.find(x=>x.id===c.dataset.postId);c.style.display=p&&p.data.uid===auth.currentUser?.uid?"":"none";});},150);});

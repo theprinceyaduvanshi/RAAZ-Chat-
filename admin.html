@@ -1,691 +1,179 @@
 <!DOCTYPE html>
 <html lang="hi">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RAAZ Admin Panel</title>
-  <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      font-family: 'Inter', system-ui, sans-serif;
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAAZ Admin</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; }
+  body { background: #0d0d0d; color: #fff; min-height: 100vh; }
 
-    :root {
-      --primary: #FF4500;
-      --primary-dark: #8B0000;
-      --gold: #FFD700;
-      --dark: #0D0D0D;
-      --dark-2: #1A1A1A;
-      --dark-3: #242424;
-      --green: #4CAF50;
-      --red: #FF5252;
-      --yellow: #FFC107;
-    }
+  .lockScreen {
+    height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: radial-gradient(circle at 30% 20%, #3a0000, #120404 70%);
+    padding: 20px;
+  }
+  .lockBox {
+    background: #1a1a1a; padding: 30px 25px; border-radius: 16px;
+    width: 90%; max-width: 340px; text-align: center;
+    border: 1px solid rgba(255,69,0,0.25);
+  }
+  .lockBox h1 {
+    background: linear-gradient(135deg, #FFD700, #FF4500);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text; margin-bottom: 20px; font-size: 24px;
+  }
+  .lockBox input {
+    width: 100%; padding: 12px; margin-bottom: 12px;
+    border: 1px solid #333; border-radius: 8px; font-size: 15px;
+    background: #0d0d0d; color: #fff;
+  }
+  .lockBox button {
+    width: 100%; padding: 12px; border: none; border-radius: 8px;
+    background: linear-gradient(135deg, #FF4500, #8B0000);
+    color: white; font-size: 15px; font-weight: bold; cursor: pointer;
+  }
+  .lockError { color: #ff6b6b; font-size: 13px; margin-top: 10px; min-height: 16px; }
 
-    body {
-      background: var(--dark);
-      color: #fff;
-      min-height: 100vh;
-    }
+  .hidden { display: none !important; }
 
-    /* Login Screen */
-    .lock-screen {
-      height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: linear-gradient(135deg, #1a0000, #0d0d0d, #2a0a0a);
-      padding: 20px;
-    }
+  .header {
+    background: linear-gradient(135deg, #3a0000, #8B0000);
+    padding: 15px; position: sticky; top: 0; z-index: 5;
+  }
+  .header h1 { font-size: 18px; margin-bottom: 10px; }
+  .header input {
+    width: 100%; padding: 10px; border-radius: 8px; border: none;
+    background: #1a1a1a; color: #fff; font-size: 14px;
+  }
+  .statLine { color: #ffb; font-size: 12px; margin-top: 8px; }
 
-    .lock-box {
-      background: rgba(26, 26, 26, 0.95);
-      padding: 40px;
-      border-radius: 24px;
-      width: 100%;
-      max-width: 380px;
-      text-align: center;
-      border: 1px solid rgba(255, 69, 0, 0.3);
-      box-shadow: 0 20px 60px rgba(255, 69, 0, 0.2);
-    }
+  .userRow {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 15px; border-bottom: 1px solid #1f1f1f;
+  }
+  .avatar {
+    width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
+    background: linear-gradient(135deg, #FF4500, #8B0000);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: bold; color: #fff; background-size: cover; background-position: center;
+  }
+  .userInfo { flex: 1; overflow: hidden; }
+  .userName { font-weight: bold; font-size: 15px; }
+  .userUsername { color: #FF6B35; font-size: 13px; }
+  .userEmail { color: #999; font-size: 12px; word-break: break-all; }
+  .userBio { color: #888; font-size: 12px; margin-top: 2px; font-style: italic; }
+  .userMeta { color: #666; font-size: 11px; margin-top: 3px; }
 
-    .lock-box h1 {
-      font-size: 32px;
-      font-weight: 900;
-      background: linear-gradient(135deg, var(--gold), var(--primary));
-      -webkit-background-clip: text;
-      background-clip: text;
-      -webkit-text-fill-color: transparent;
-      margin-bottom: 10px;
-    }
-
-    .lock-box p {
-      color: rgba(255, 255, 255, 0.6);
-      margin-bottom: 25px;
-      font-size: 14px;
-    }
-
-    .lock-box input {
-      width: 100%;
-      padding: 14px;
-      border: 2px solid rgba(255, 255, 255, 0.1);
-      border-radius: 12px;
-      background: rgba(255, 255, 255, 0.05);
-      color: #fff;
-      font-size: 16px;
-      margin-bottom: 15px;
-      text-align: center;
-    }
-
-    .lock-box input:focus {
-      outline: none;
-      border-color: var(--primary);
-    }
-
-    .lock-box button {
-      width: 100%;
-      padding: 14px;
-      border: none;
-      border-radius: 12px;
-      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-      color: white;
-      font-size: 16px;
-      font-weight: 700;
-      cursor: pointer;
-      transition: all 0.3s;
-    }
-
-    .lock-box button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 25px rgba(255, 69, 0, 0.3);
-    }
-
-    .lock-error {
-      color: var(--red);
-      font-size: 13px;
-      margin-top: 10px;
-      min-height: 20px;
-    }
-
-    /* Admin Panel */
-    .admin-panel {
-      min-height: 100vh;
-      background: var(--dark);
-    }
-
-    .admin-header {
-      background: linear-gradient(135deg, #2a0a0a, #1a0000);
-      padding: 20px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      border-bottom: 1px solid rgba(255, 69, 0, 0.2);
-      position: sticky;
-      top: 0;
-      z-index: 100;
-    }
-
-    .admin-header h1 {
-      font-size: 20px;
-      font-weight: 800;
-      background: linear-gradient(135deg, var(--gold), var(--primary));
-      -webkit-background-clip: text;
-      background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-
-    .admin-header-right {
-      display: flex;
-      gap: 10px;
-    }
-
-    .admin-header-right button {
-      background: rgba(255, 255, 255, 0.1);
-      border: none;
-      border-radius: 8px;
-      padding: 8px 15px;
-      color: #fff;
-      cursor: pointer;
-      font-size: 13px;
-    }
-
-    .admin-header-right button:hover {
-      background: var(--primary);
-    }
-
-    /* Stats Cards */
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 20px;
-      padding: 20px;
-    }
-
-    .stat-card {
-      background: var(--dark-2);
-      border-radius: 16px;
-      padding: 20px;
-      border: 1px solid rgba(255, 255, 255, 0.05);
-    }
-
-    .stat-card h3 {
-      color: rgba(255, 255, 255, 0.6);
-      font-size: 13px;
-      margin-bottom: 10px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-
-    .stat-card .stat-value {
-      font-size: 32px;
-      font-weight: 800;
-      background: linear-gradient(135deg, var(--gold), var(--primary));
-      -webkit-background-clip: text;
-      background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-
-    /* Search */
-    .search-section {
-      padding: 0 20px;
-      margin-bottom: 20px;
-    }
-
-    .search-section input {
-      width: 100%;
-      padding: 14px 16px;
-      border: 2px solid rgba(255, 255, 255, 0.1);
-      border-radius: 12px;
-      background: var(--dark-2);
-      color: #fff;
-      font-size: 15px;
-    }
-
-    .search-section input:focus {
-      outline: none;
-      border-color: var(--primary);
-    }
-
-    /* Users Table */
-    .users-table {
-      width: 100%;
-      padding: 0 20px;
-      overflow-x: auto;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      background: var(--dark-2);
-      border-radius: 16px;
-      overflow: hidden;
-    }
-
-    th {
-      background: rgba(255, 255, 255, 0.05);
-      padding: 15px;
-      text-align: left;
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: rgba(255, 255, 255, 0.6);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    }
-
-    td {
-      padding: 15px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-      vertical-align: middle;
-    }
-
-    tr:hover {
-      background: rgba(255, 255, 255, 0.03);
-    }
-
-    .user-cell {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .user-avatar {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 700;
-      font-size: 16px;
-      color: #fff;
-      flex-shrink: 0;
-    }
-
-    .user-info {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .user-info .name {
-      font-weight: 600;
-      font-size: 14px;
-    }
-
-    .user-info .email {
-      font-size: 12px;
-      color: rgba(255, 255, 255, 0.5);
-    }
-
-    .status-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 5px 10px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 600;
-    }
-
-    .status-badge.online {
-      background: rgba(76, 175, 80, 0.15);
-      color: var(--green);
-    }
-
-    .status-badge.offline {
-      background: rgba(255, 255, 255, 0.1);
-      color: rgba(255, 255, 255, 0.6);
-    }
-
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-    }
-
-    .status-dot.online {
-      background: var(--green);
-    }
-
-    .status-dot.offline {
-      background: rgba(255, 255, 255, 0.3);
-    }
-
-    .action-btns {
-      display: flex;
-      gap: 8px;
-    }
-
-    .action-btn {
-      padding: 6px 12px;
-      border: none;
-      border-radius: 8px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.3s;
-    }
-
-    .action-btn.warn {
-      background: rgba(255, 193, 7, 0.15);
-      color: var(--yellow);
-    }
-
-    .action-btn.warn:hover {
-      background: var(--yellow);
-      color: var(--dark);
-    }
-
-    .action-btn.ban {
-      background: rgba(255, 82, 82, 0.15);
-      color: var(--red);
-    }
-
-    .action-btn.ban:hover {
-      background: var(--red);
-      color: #fff;
-    }
-
-    .action-btn.delete {
-      background: rgba(255, 255, 255, 0.1);
-      color: #fff;
-    }
-
-    .action-btn.delete:hover {
-      background: #fff;
-      color: var(--dark);
-    }
-
-    .empty-state {
-      text-align: center;
-      padding: 60px 20px;
-      color: rgba(255, 255, 255, 0.5);
-    }
-
-    .hidden {
-      display: none !important;
-    }
-
-    .spinner {
-      width: 40px;
-      height: 40px;
-      border: 4px solid rgba(255, 255, 255, 0.1);
-      border-top: 4px solid var(--primary);
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin: 0 auto 15px;
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-
-    .toast {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background: var(--dark-2);
-      color: #fff;
-      padding: 15px 20px;
-      border-radius: 12px;
-      font-size: 14px;
-      z-index: 9999;
-      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
-      transform: translateX(100%);
-      transition: transform 0.3s ease;
-      border-left: 4px solid var(--primary);
-    }
-
-    .toast.show {
-      transform: translateX(0);
-    }
-  </style>
+  .emptyMsg { text-align: center; padding: 40px 20px; color: #777; }
+  .loadingMsg { text-align: center; padding: 40px 20px; color: #FF6B35; }
+</style>
 </head>
 <body>
 
-  <div id="lockScreen" class="lock-screen">
-    <div class="lock-box">
-      <h1>🔐 RAAZ</h1>
-      <p>Admin Panel</p>
+  <!-- SIMPLE LOCK SCREEN (soft protection, not real security) -->
+  <div id="lockScreen" class="lockScreen">
+    <div class="lockBox">
+      <h1>🔐 RAAZ Admin</h1>
       <input type="password" id="adminPassInput" placeholder="Admin password daalo">
-      <button id="unlockBtn">🔓 Unlock Karo</button>
-      <p id="lockError" class="lock-error"></p>
+      <button id="unlockBtn">Andar Jao</button>
+      <p id="lockError" class="lockError"></p>
     </div>
   </div>
 
-  <div id="adminPanel" class="admin-panel hidden">
-    <div class="admin-header">
-      <h1>👥 RAAZ Users Admin</h1>
-      <div class="admin-header-right">
-        <button id="refreshBtn">🔄 Refresh</button>
-        <button id="logoutAdminBtn">🚪 Logout</button>
-      </div>
+  <!-- ADMIN PANEL -->
+  <div id="adminPanel" class="hidden">
+    <div class="header">
+      <h1>👥 Sabhi RAAZ Users</h1>
+      <input type="text" id="searchBox" placeholder="Naam ya username se search karo...">
+      <div class="statLine" id="statLine">Loading...</div>
     </div>
-
-    <div class="stats-grid">
-      <div class="stat-card">
-        <h3>Total Users</h3>
-        <div class="stat-value" id="totalUsers">0</div>
-      </div>
-      <div class="stat-card">
-        <h3>Online Abhi</h3>
-        <div class="stat-value" id="onlineUsers">0</div>
-      </div>
-      <div class="stat-card">
-        <h3>Total Messages</h3>
-        <div class="stat-value" id="totalMessages">0</div>
-      </div>
-      <div class="stat-card">
-        <h3>Blocked Users</h3>
-        <div class="stat-value" id="blockedUsers">0</div>
-      </div>
-    </div>
-
-    <div class="search-section">
-      <input type="text" id="searchBox" placeholder="🔍 Naam, username ya email se search karo...">
-    </div>
-
-    <div class="users-table">
-      <table>
-        <thead>
-          <tr>
-            <th>User</th>
-            <th>Username</th>
-            <th>Status</th>
-            <th>Last Active</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="usersTableBody"></tbody>
-      </table>
-      <div id="loadingState" class="loading hidden">
-        <div class="spinner"></div>
-        <p>Loading users...</p>
-      </div>
-      <div id="emptyState" class="empty-state hidden">
-        <div class="empty-state-icon">👤</div>
-        <p>Koi user nahi mila</p>
-      </div>
-    </div>
+    <div id="userList"></div>
+    <div id="emptyMsg" class="emptyMsg hidden">Koi user nahi mila</div>
   </div>
-
-  <div class="toast" id="toast"></div>
 
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="firebase-config.js"></script>
-
   <script>
+    // 🔴 YAHAN APNA PASSWORD SET KARO (jo bhi chaho, sirf tumhe pata ho)
     const ADMIN_PASSWORD = "omnamahshivayprinceyaduvanshi8765432187654321";
 
-    const lockScreen = document.getElementById('lockScreen');
-    const adminPanel = document.getElementById('adminPanel');
-    const adminPassInput = document.getElementById('adminPassInput');
-    const unlockBtn = document.getElementById('unlockBtn');
-    const lockError = document.getElementById('lockError');
-    const refreshBtn = document.getElementById('refreshBtn');
-    const logoutAdminBtn = document.getElementById('logoutAdminBtn');
-    const searchBox = document.getElementById('searchBox');
-    const usersTableBody = document.getElementById('usersTableBody');
-    const loadingState = document.getElementById('loadingState');
-    const emptyState = document.getElementById('emptyState');
-    const toast = document.getElementById('toast');
+    const lockScreen = document.getElementById("lockScreen");
+    const adminPanel = document.getElementById("adminPanel");
+    const adminPassInput = document.getElementById("adminPassInput");
+    const unlockBtn = document.getElementById("unlockBtn");
+    const lockError = document.getElementById("lockError");
+    const searchBox = document.getElementById("searchBox");
+    const userList = document.getElementById("userList");
+    const statLine = document.getElementById("statLine");
+    const emptyMsg = document.getElementById("emptyMsg");
 
     let allUsers = [];
-    let adminSession = false;
 
-    unlockBtn.addEventListener('click', checkPassword);
-    adminPassInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') checkPassword();
-    });
-
-    refreshBtn.addEventListener('click', loadDashboard);
-    logoutAdminBtn.addEventListener('click', logoutAdmin);
-    searchBox.addEventListener('input', handleSearch);
+    unlockBtn.addEventListener("click", checkPassword);
+    adminPassInput.addEventListener("keypress", (e) => { if (e.key === "Enter") checkPassword(); });
 
     function checkPassword() {
       if (adminPassInput.value === ADMIN_PASSWORD) {
-        adminSession = true;
-        lockScreen.classList.add('hidden');
-        adminPanel.classList.remove('hidden');
-        loadDashboard();
+        lockScreen.classList.add("hidden");
+        adminPanel.classList.remove("hidden");
+        loadAllUsers();
       } else {
-        lockError.textContent = '❌ Galat password!';
-        adminPassInput.value = '';
+        lockError.textContent = "Galat password!";
       }
     }
 
-    function logoutAdmin() {
-      adminSession = false;
-      adminPanel.classList.add('hidden');
-      lockScreen.classList.remove('hidden');
-      adminPassInput.value = '';
-      lockError.textContent = '';
-    }
-
-    async function loadDashboard() {
-      loadingState.classList.remove('hidden');
-      emptyState.classList.add('hidden');
-      usersTableBody.innerHTML = '';
-
+    async function loadAllUsers() {
+      statLine.textContent = "Loading...";
       try {
-        const usersSnapshot = await db.collection('users').get();
-        allUsers = usersSnapshot.docs.map(doc => ({
-          uid: doc.id,
-          ...doc.data()
-        }));
-
-        document.getElementById('totalUsers').textContent = allUsers.length;
-
-        const onlineCount = allUsers.filter(u => 
-          u.lastSeen && (Date.now() - u.lastSeen.toMillis()) < 25000
-        ).length;
-        document.getElementById('onlineUsers').textContent = onlineCount;
-
-        let blockedCount = 0;
-        for (const user of allUsers) {
-          const blockedSnapshot = await db.collection('users').doc(user.uid).collection('blocked').get();
-          blockedCount += blockedSnapshot.size;
-        }
-        document.getElementById('blockedUsers').textContent = blockedCount;
-
-        const chatsSnapshot = await db.collection('chats').get();
-        let totalMsgs = 0;
-        for (const chatDoc of chatsSnapshot.docs) {
-          const msgsSnapshot = await db.collection('chats').doc(chatDoc.id).collection('messages').get();
-          totalMsgs += msgsSnapshot.size;
-        }
-        document.getElementById('totalMessages').textContent = totalMsgs;
-
+        const snapshot = await db.collection("users").orderBy("username").get();
+        allUsers = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+        statLine.textContent = `Total ${allUsers.length} users`;
         renderUsers(allUsers);
-
       } catch (err) {
-        showToast('Error: ' + err.message, 'error');
-      } finally {
-        loadingState.classList.add('hidden');
+        statLine.textContent = "Error: " + err.message;
       }
     }
 
     function renderUsers(users) {
-      usersTableBody.innerHTML = '';
+      userList.innerHTML = "";
+      emptyMsg.classList.toggle("hidden", users.length > 0);
 
-      if (users.length === 0) {
-        emptyState.classList.remove('hidden');
-        return;
-      }
+      users.forEach((u) => {
+        const row = document.createElement("div");
+        row.classList.add("userRow");
 
-      users.forEach((user) => {
-        const isOnline = user.lastSeen && (Date.now() - user.lastSeen.toMillis()) < 25000;
-        const lastSeenText = user.lastSeen ? formatLastSeen(user.lastSeen.toDate()) : 'Kabhi nahi';
+        const lastSeenText = u.lastSeen ? new Date(u.lastSeen.seconds * 1000).toLocaleString("en-IN") : "Pata nahi";
 
-        const row = document.createElement('tr');
         row.innerHTML = `
-          <td>
-            <div class="user-cell">
-              <div class="user-avatar">${(user.name || '?').charAt(0).toUpperCase()}</div>
-              <div class="user-info">
-                <span class="name">${user.name || '(No name)'}</span>
-                <span class="email">${user.email || ''}</span>
-              </div>
-            </div>
-          </td>
-          <td>@${user.username || '(No username)'}</td>
-          <td>
-            <span class="status-badge ${isOnline ? 'online' : 'offline'}">
-              <span class="status-dot ${isOnline ? 'online' : 'offline'}"></span>
-              ${isOnline ? 'Online' : 'Offline'}
-            </span>
-          </td>
-          <td>${lastSeenText}</td>
-          <td>
-            <div class="action-btns">
-              <button class="action-btn warn" onclick="warnUser('${user.uid}')">⚠️ Warn</button>
-              <button class="action-btn ban" onclick="banUser('${user.uid}')">🚫 Ban</button>
-              <button class="action-btn delete" onclick="deleteUser('${user.uid}')">🗑️ Delete</button>
-            </div>
-          </td>
+          <div class="avatar" style="${u.photoBase64 ? `background-image:url(${u.photoBase64})` : ''}">
+            ${u.photoBase64 ? '' : (u.name || '?').charAt(0).toUpperCase()}
+          </div>
+          <div class="userInfo">
+            <div class="userName">${u.name || '(naam nahi hai)'}</div>
+            <div class="userUsername">@${u.username || '(username nahi hai)'}</div>
+            <div class="userEmail">${u.email || ''}</div>
+            ${u.bio ? `<div class="userBio">"${u.bio}"</div>` : ''}
+            <div class="userMeta">Last active: ${lastSeenText}</div>
+          </div>
         `;
-        usersTableBody.appendChild(row);
+        userList.appendChild(row);
       });
     }
 
-    function handleSearch() {
+    searchBox.addEventListener("input", () => {
       const q = searchBox.value.trim().toLowerCase();
-      if (!q) {
-        renderUsers(allUsers);
-        return;
-      }
-
-      const filtered = allUsers.filter(user =>
-        (user.name || '').toLowerCase().includes(q) ||
-        (user.username || '').toLowerCase().includes(q) ||
-        (user.email || '').toLowerCase().includes(q)
+      if (!q) { renderUsers(allUsers); return; }
+      const filtered = allUsers.filter(u =>
+        (u.name || "").toLowerCase().includes(q) ||
+        (u.username || "").toLowerCase().includes(q) ||
+        (u.email || "").toLowerCase().includes(q)
       );
       renderUsers(filtered);
-    }
-
-    function formatLastSeen(date) {
-      const now = new Date();
-      const diff = now - date;
-      
-      if (diff < 60000) return 'Abhi';
-      if (diff < 3600000) return Math.floor(diff / 60000) + ' min pehle';
-      if (diff < 86400000) return Math.floor(diff / 3600000) + ' ghante pehle';
-      return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-    }
-
-    async function warnUser(uid) {
-      if (!confirm('Kya aap is user ko warn karna chahte hain?')) return;
-      
-      try {
-        await db.collection('users').doc(uid).update({
-          warnings: firebase.firestore.FieldValue.increment(1),
-          lastWarning: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        showToast('⚠️ User ko warn kar diya gaya!', 'success');
-      } catch (err) {
-        showToast('Error: ' + err.message, 'error');
-      }
-    }
-
-    async function banUser(uid) {
-      if (!confirm('Kya aap is user ko BAN karna chahte hain?')) return;
-      
-      try {
-        await db.collection('users').doc(uid).update({
-          banned: true,
-          bannedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        showToast('🚫 User ban kar diya gaya!', 'success');
-        loadDashboard();
-      } catch (err) {
-        showToast('Error: ' + err.message, 'error');
-      }
-    }
-
-    async function deleteUser(uid) {
-      if (!confirm('⚠️ Kya aap is user ko PERMANENTLY delete karna chahte hain? Yeh action wapas nahi ho sakta!')) return;
-      
-      try {
-        await db.collection('users').doc(uid).delete();
-        showToast('🗑️ User delete kar diya gaya!', 'success');
-        loadDashboard();
-      } catch (err) {
-        showToast('Error: ' + err.message, 'error');
-      }
-    }
-
-    function showToast(message, type = 'info') {
-      toast.textContent = message;
-      toast.className = 'toast show';
-      
-      setTimeout(() => {
-        toast.classList.remove('show');
-      }, 3000);
-    }
+    });
   </script>
 </body>
 </html>

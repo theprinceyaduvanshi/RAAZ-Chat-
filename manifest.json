@@ -1,38 +1,21 @@
 {
-  "name": "RAAZ - Private Messenger",
+  "name": "RAAZ — Connect. Share. Discover.",
   "short_name": "RAAZ",
-  "description": "Private messaging app with status, voice calls & more",
-  "start_url": "./index.html",
-  "scope": "./",
+  "start_url": "index.html",
   "display": "standalone",
-  "background_color": "#0D0D0D",
-  "theme_color": "#FF4500",
-  "orientation": "portrait-primary",
-  "categories": ["social", "communication"],
+  "background_color": "#090a0d",
+  "theme_color": "#ff4b18",
+  "orientation": "portrait",
   "icons": [
     {
       "src": "icon-192.png",
       "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/png"
     },
     {
       "src": "icon-512.png",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
-  ],
-  "shortcuts": [
-    {
-      "name": "New Chat",
-      "url": "./index.html?action=new-chat",
-      "description": "Start a new conversation"
-    },
-    {
-      "name": "My Status",
-      "url": "./index.html?action=my-status",
-      "description": "View your status"
+      "type": "image/png"
     }
   ]
 }
