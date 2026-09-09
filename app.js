@@ -1280,18 +1280,77 @@ function unattachStats(unsubStore) {
 
 async function renderFollowButton(uid, data) {
   const myUid = auth.currentUser.uid;
-  const followDoc = await db.collection("users").doc(myUid).collection("following").doc(uid).get();
-  const isFollowing = followDoc.exists;
+  if (uid === myUid) {
+    followBtnArea.innerHTML = "";
+    return;
+  }
 
-  followBtnArea.innerHTML = `<button id="followToggleBtn" class="followBtn ${isFollowing ? 'following' : ''}">${isFollowing ? 'OK Following' : '+ Follow'}</button>`;
+  let isFollowing = false;
+  try {
+    const followDoc = await db.collection("users").doc(myUid).collection("following").doc(uid).get();
+    isFollowing = followDoc.exists;
+  } catch (e) {
+    console.error("Follow state load", e);
+  }
 
-  document.getElementById("followToggleBtn").addEventListener("click", async () => {
-    if (isFollowing) {
-      await unfollowUser(uid);
-    } else {
-      await followUser(uid, data.name, data.username);
+  // Instagram-style: Follow + Message are always visible together.
+  followBtnArea.innerHTML = `
+    <button id="followToggleBtn" class="followBtn ${isFollowing ? 'following' : ''}">${isFollowing ? 'OK Following' : '+ Follow'}</button>
+    <button id="profileMessageBtn" class="followBtn profileMessageBtn">Message</button>
+  `;
+
+  document.getElementById("followToggleBtn")?.addEventListener("click", async () => {
+    try {
+      if (isFollowing) {
+        await unfollowUser(uid);
+      } else {
+        await followUser(uid, data.name, data.username);
+      }
+      renderFollowButton(uid, data);
+    } catch (e) {
+      showRaazToast?.(e.message || "Follow action failed", "error");
     }
-    renderFollowButton(uid, data);
+  });
+
+  document.getElementById("profileMessageBtn")?.addEventListener("click", async () => {
+    const btn = document.getElementById("profileMessageBtn");
+    if (!btn) return;
+    const oldText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Opening...";
+    try {
+      const chatId = getChatId(myUid, uid);
+      const [chatDoc, sentDoc, receivedDoc] = await Promise.all([
+        db.collection("users").doc(myUid).collection("chatsList").doc(chatId).get(),
+        db.collection("users").doc(myUid).collection("requestsSent").doc(uid).get(),
+        db.collection("users").doc(myUid).collection("requestsReceived").doc(uid).get()
+      ]);
+
+      if (chatDoc.exists) {
+        openChat(uid, data.name, data.username);
+        return;
+      }
+
+      if (receivedDoc.exists) {
+        await acceptRequest(uid, data.name, data.username);
+        openChat(uid, data.name, data.username);
+        return;
+      }
+
+      if (sentDoc.exists) {
+        showRaazToast?.("Message request already sent.", "info");
+        return;
+      }
+
+      await sendMessageRequest(uid, data.name, data.username);
+      showRaazToast?.("Message request sent.", "success");
+    } catch (e) {
+      console.error("Profile message", e);
+      showRaazToast?.(e.message || "Message open nahi ho paaya.", "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = oldText;
+    }
   });
 }
 
@@ -2515,7 +2574,7 @@ document.querySelector('[data-raaz-nav="feed"]')?.addEventListener("click",()=>{
   });
 
   // Close sheets with Android back button when possible.
-  /* legacy popstate router removed by V17.1 */
+  /* legacy popstate router removed by V18 */
 })();
 
 
@@ -2737,7 +2796,7 @@ document.querySelector('[data-raaz-nav="feed"]')?.addEventListener("click",()=>{
   const _raazOpenChat=openChat;
   openChat=function(friendUid,friendName,friendUsername){ window.raazPushHistory("chat"); return _raazOpenChat(friendUid,friendName,friendUsername); };
 
-  /* legacy popstate router removed by V17.1 */
+  /* legacy popstate router removed by V18 */
 
   function _raazCloseChatScreen(){
     if(unsubscribeMessages)unsubscribeMessages(); if(unsubscribeFriendStatus)unsubscribeFriendStatus(); if(unsubscribeChatDoc)unsubscribeChatDoc();
@@ -3260,7 +3319,7 @@ document.querySelector('[data-raaz-nav="feed"]')?.addEventListener("click",()=>{
   document.addEventListener('visibilitychange',()=>{if(document.hidden&&stackRunning){clearInterval(stackTimer);stackRunning=false;$('rushStartOverlay')?.classList.remove('hidden');}});
 
   // History support for Game Center.
-  /* legacy popstate router removed by V17.1 */
+  /* legacy popstate router removed by V18 */
   document.addEventListener('visibilitychange',()=>{if(document.hidden&&stackRunning){clearInterval(stackTimer);stackRunning=false;$('rushStartOverlay')?.classList.remove('hidden');}});
 
   // Cleanup game listener on logout.
@@ -3314,7 +3373,7 @@ document.querySelector('[data-raaz-nav="feed"]')?.addEventListener("click",()=>{
   });
 
   // Android/browser back: overlays close first, then app pages.
-  /* legacy popstate router removed by V17.1 */
+  /* legacy popstate router removed by V18 */
 
   // Hardware/browser back can arrive without a useful app history state in file previews.
   if(!history.state?.raazV163Base){
@@ -3430,7 +3489,7 @@ document.querySelector('[data-raaz-nav="feed"]')?.addEventListener("click",()=>{
   byId('openGamesHomeBtn')?.addEventListener('click',()=>setTimeout(()=>pushPage('games'),0));
 
   // Browser / Android back. We intentionally use the state we landed on, then render it directly.
-  /* legacy popstate router removed by V17.1 */
+  /* legacy popstate router removed by V18 */
 
   // Normalize old/misplaced profile labels and remove accidental duplicate wording.
   const textFixes={
@@ -3601,16 +3660,16 @@ document.querySelector('[data-raaz-nav="feed"]')?.addEventListener("click",()=>{
     if(visible(profileViewScreen)||visible(profileScreen)||visible(requestsScreen)||visible(exploreScreen)||visible(reelsScreen)||visible(groupsScreen)||visible(notesScreen)||visible(settingsScreen)){raazGoHome(lastHomeTab||'feed');return;}
   }
   window.raazGoBack=deterministicBack;window.raazUniversalBack=deterministicBack;
-  /* legacy popstate router removed by V17.1 */
+  /* legacy popstate router removed by V18 */
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();deterministicBack();}},true);
 
   // Initial profile hash support and PWA-safe cache bust.
-  const link=document.querySelector('link[rel="stylesheet"]');if(link)link.href='style.css?v=17.1.0';
-  console.info('RAAZ V17 profile + analytics + navigation hardening ready');
+  const link=document.querySelector('link[rel="stylesheet"]');if(link)link.href='style.css?v=18.0.0';
+  console.info('RAAZ V18 profile + analytics + navigation hardening ready');
 })();
 
 
-/* ================= RAAZ V17.1 - SINGLE NAVIGATION ROUTER ================= */
+/* ================= RAAZ V18 - SINGLE NAVIGATION ROUTER ================= */
 (function(){
   const screens=[authScreen,homeScreen,chatScreen,profileScreen,profileViewScreen,requestsScreen,blockedScreen,peopleListScreen,document.getElementById('exploreScreen'),document.getElementById('reelsScreen'),document.getElementById('groupsScreen'),document.getElementById('notesScreen'),document.getElementById('settingsScreen'),document.getElementById('gamesScreen')].filter(Boolean);
   const names=['auth','home','chat','profile','profileView','requests','blocked','people','explore','reels','groups','notes','settings','games'];
@@ -3658,5 +3717,158 @@ document.querySelector('[data-raaz-nav="feed"]')?.addEventListener("click",()=>{
   // Every identifiable user surface can open its profile.
   document.addEventListener('click',e=>{const t=e.target.closest('[data-profile-uid]');if(!t)return;const uid=t.dataset.profileUid;if(!uid||t.closest('button:not([data-profile-uid])'))return;e.preventDefault();e.stopPropagation();db.collection('users').doc(uid).get().then(s=>{if(s.exists)openProfileView(uid,s.data())}).catch(err=>showRaazToast?.(err.message||'Profile load nahi hui','error'))},{capture:true});
   const oldFollow=followUser;followUser=async function(uid,name,username){if(!auth.currentUser||uid===auth.currentUser.uid){showRaazToast?.('Khud ko follow nahi kar sakte.','error');return false}return oldFollow(uid,name,username)};window.followUser=followUser;
-  console.info('RAAZ V17.1 single navigation router ready');
+  console.info('RAAZ V18 single navigation router ready');
+})();
+
+/* ================= RAAZ V18 - PROFILE MESSAGE SYSTEM REBUILD ================= */
+(function installRaazV18MessageSystem(){
+  const $ = id => document.getElementById(id);
+  const toast = (msg, type='info') => { try { window.showRaazToast?.(msg, type); } catch(_) { alert(msg); } };
+  const esc = s => (typeof escapeHtml === 'function' ? escapeHtml(String(s ?? '')) : String(s ?? '').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#039;'}[c])));
+
+  async function getMessageState(uid){
+    const me = auth.currentUser?.uid;
+    if(!me || !uid || me === uid) return {chat:false,sent:false,received:false};
+    const chatId = getChatId(me, uid);
+    const [chatDoc, sentDoc, receivedDoc] = await Promise.all([
+      db.collection('users').doc(me).collection('chatsList').doc(chatId).get(),
+      db.collection('users').doc(me).collection('requestsSent').doc(uid).get(),
+      db.collection('users').doc(me).collection('requestsReceived').doc(uid).get()
+    ]);
+    return {chat:chatDoc.exists, sent:sentDoc.exists, received:receivedDoc.exists};
+  }
+
+  async function profileMessage(uid, data, btn){
+    const me = auth.currentUser?.uid;
+    if(!me || !uid || uid === me) return;
+    const old = btn?.textContent || 'Message';
+    if(btn){ btn.disabled = true; btn.textContent = 'Please wait...'; }
+    try{
+      const state = await getMessageState(uid);
+      if(state.chat){
+        openChat(uid, data.name || 'User', data.username || 'user');
+        return;
+      }
+      if(state.received){
+        await acceptRequest(uid, data.name || 'User', data.username || 'user');
+        openChat(uid, data.name || 'User', data.username || 'user');
+        return;
+      }
+      if(state.sent){
+        toast('Message request already sent.', 'info');
+        return;
+      }
+      await sendMessageRequest(uid, data.name || 'User', data.username || 'user');
+      toast('Message request sent.', 'success');
+      await renderFollowButton(uid, data);
+      await renderProfileViewActions(uid, data);
+    }catch(e){
+      console.error('RAAZ V18 profile message:', e);
+      toast(e?.message || 'Message action failed.', 'error');
+    }finally{
+      if(btn){ btn.disabled = false; btn.textContent = old; }
+    }
+  }
+
+  async function v18RenderFollowButton(uid, data){
+    const area = $('followBtnArea');
+    if(!area) return;
+    const me = auth.currentUser?.uid;
+    if(!me || uid === me){ area.innerHTML = ''; return; }
+
+    let following = false;
+    try{
+      following = (await db.collection('users').doc(me).collection('following').doc(uid).get()).exists;
+    }catch(e){ console.warn('Follow state:', e); }
+
+    area.innerHTML = `
+      <button type="button" id="v18FollowBtn" class="followBtn ${following ? 'following' : ''}">${following ? 'Following' : '+ Follow'}</button>
+      <button type="button" id="v18MessageBtn" class="followBtn profileMessageBtn">Message</button>
+    `;
+
+    $('v18FollowBtn')?.addEventListener('click', async () => {
+      try{
+        if(following) await unfollowUser(uid);
+        else await followUser(uid, data.name || 'User', data.username || 'user');
+        await v18RenderFollowButton(uid, data);
+      }catch(e){ toast(e?.message || 'Follow action failed.', 'error'); }
+    });
+    $('v18MessageBtn')?.addEventListener('click', e => profileMessage(uid, data, e.currentTarget));
+  }
+
+  async function v18RenderProfileActions(uid, data){
+    const area = $('viewActionArea');
+    if(!area) return;
+    const me = auth.currentUser?.uid;
+    if(!me || uid === me){ area.innerHTML=''; return; }
+    try{
+      const state = await getMessageState(uid);
+      if(state.chat){
+        area.innerHTML = '<span class="v18ProfileState">Connected — open chat from Message</span>';
+      }else if(state.received){
+        area.innerHTML = `
+          <button type="button" id="v18AcceptMessageBtn" class="viewActionBtn">Accept & Message</button>
+          <button type="button" id="v18DeclineMessageBtn" class="linkBtn">Decline request</button>`;
+        $('v18AcceptMessageBtn')?.addEventListener('click', async e => profileMessage(uid,data,e.currentTarget));
+        $('v18DeclineMessageBtn')?.addEventListener('click', async () => {
+          try{ await declineRequest(uid); await v18RenderProfileActions(uid,data); await v18RenderFollowButton(uid,data); }
+          catch(e){ toast(e?.message || 'Request decline failed.', 'error'); }
+        });
+      }else if(state.sent){
+        area.innerHTML = `
+          <span class="v18ProfileState">Message request sent</span>
+          <button type="button" id="v18CancelMessageBtn" class="linkBtn">Cancel request</button>`;
+        $('v18CancelMessageBtn')?.addEventListener('click', async () => {
+          try{
+            const b = db.batch();
+            b.delete(db.collection('users').doc(me).collection('requestsSent').doc(uid));
+            b.delete(db.collection('users').doc(uid).collection('requestsReceived').doc(me));
+            await b.commit();
+            await v18RenderProfileActions(uid,data);
+          }catch(e){ toast(e?.message || 'Request cancel failed.', 'error'); }
+        });
+      }else{
+        area.innerHTML = '<span class="v18ProfileState">Message request bhejkar chat start karein.</span>';
+      }
+    }catch(e){
+      console.error('RAAZ V18 profile actions:',e);
+      area.innerHTML = `<span class="v18ProfileState">${esc(e?.message || 'Message status unavailable')}</span>`;
+    }
+  }
+
+  // Replace the old profile action renderer so it never reads another user's private blocked document.
+  window.renderProfileViewActions = v18RenderProfileActions;
+  renderProfileViewActions = v18RenderProfileActions;
+  window.renderFollowButton = v18RenderFollowButton;
+  renderFollowButton = v18RenderFollowButton;
+
+  // Ensure every profile open gets the same fresh, deterministic action UI.
+  const originalOpenProfileViewV18 = openProfileView;
+  openProfileView = async function(uid, data){
+    try{
+      const snap = await db.collection('users').doc(uid).get();
+      const fresh = snap.exists ? snap.data() : (data || {});
+      const result = await originalOpenProfileViewV18(uid, fresh);
+      await v18RenderFollowButton(uid, fresh);
+      await v18RenderProfileActions(uid, fresh);
+      return result;
+    }catch(e){
+      console.error('RAAZ V18 profile open:',e);
+      try { return originalOpenProfileViewV18(uid, data || {}); } catch(_) {}
+    }
+  };
+  window.openProfileView = openProfileView;
+
+  // Make the profile action row unmistakable on small screens.
+  const style = document.createElement('style');
+  style.textContent = `
+    .profileProActions{display:grid!important;grid-template-columns:1fr 1fr!important;gap:10px!important;width:100%!important}
+    .profileProActions .followBtn{min-height:44px!important;width:100%!important}
+    .profileMessageBtn{background:#17191e!important;border:1px solid #444954!important;color:#fff!important}
+    .v18ProfileState{display:block;width:100%;padding:9px 4px;color:#8f949e;font-size:12px;text-align:center}
+    .profileProActionsSecondary{width:100%!important}
+    .profileProActionsSecondary .viewActionBtn,.profileProActionsSecondary .linkBtn{max-width:100%;}
+  `;
+  document.head.appendChild(style);
+  console.info('RAAZ V18 profile message system ready');
 })();
