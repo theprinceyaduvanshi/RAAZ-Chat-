@@ -1,0 +1,49 @@
+RAAZ V16 FIRESTORE RULES — CHAT REACTIONS + FRIEND LUDO
+
+IMPORTANT: Do NOT replace your existing rules with this file blindly.
+These blocks/changes must be merged into the current published rules.
+
+1) CHAT MESSAGE REACTIONS
+Your existing chat message update rule should be expanded so a signed-in participant can update ONLY the reactions field on a message. Keep the existing owner-only update rule for normal message edits.
+
+Inside:
+match /chats/{chatId} {
+  match /messages/{messageId} {
+    allow update: if signedIn()
+      && exists(/databases/$(database)/documents/users/$(request.auth.uid)/chatsList/$(chatId))
+      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions']);
+  }
+}
+
+2) FRIEND LUDO / GAME CENTER
+Add:
+
+match /games/{gameId} {
+  allow read: if signedIn()
+    && (resource.data.hostUid == request.auth.uid || resource.data.guestUid == request.auth.uid);
+
+  allow create: if signedIn()
+    && request.resource.data.gameType == 'ludo'
+    && request.resource.data.hostUid == request.auth.uid;
+
+  allow update: if signedIn()
+    && (resource.data.hostUid == request.auth.uid || resource.data.guestUid == request.auth.uid)
+    && (
+      resource.data.hostUid == request.auth.uid
+      || request.resource.data.guestUid == request.auth.uid
+      || request.resource.data.guestUid == resource.data.guestUid
+    );
+
+  allow delete: if signedIn() && resource.data.hostUid == request.auth.uid;
+}
+
+NOTES:
+- 2048 and Stack Tower are local games and do not require Firestore.
+- Friend Ludo uses /games/{gameId} for realtime state.
+- Ludo room joining uses the 6-character room code as the /games/{gameId} document ID, so no composite index is required.
+- Keep your final catch-all deny rule at the bottom of the Firestore rules.
+
+V16.4 NOTE:
+- Chat reactions still require the reactions-only message update allow block above.
+- Friend Ludo requires the /games/{gameId} blocks above. The app uses a 6-character document ID as the room code.
+- No new collection was introduced by the V16.4 UI polish.

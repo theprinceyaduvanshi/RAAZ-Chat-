@@ -84,6 +84,10 @@ const storyProgressBar = document.getElementById("storyProgressBar");
 const storyPrevBtn = document.getElementById("storyPrevBtn");
 const storyNextBtn = document.getElementById("storyNextBtn");
 const storyViewerViews = document.getElementById("storyViewerViews");
+const storyViewersOverlay = document.getElementById("storyViewersOverlay");
+const storyViewersList = document.getElementById("storyViewersList");
+const storyViewersCountLabel = document.getElementById("storyViewersCountLabel");
+const closeStoryViewersBtn = document.getElementById("closeStoryViewersBtn");
 const deleteStoryBtn = document.getElementById("deleteStoryBtn");
 const storyReplyBar = document.getElementById("storyReplyBar");
 const storyReplyInput = document.getElementById("storyReplyInput");
@@ -91,6 +95,7 @@ const sendStoryReplyBtn = document.getElementById("sendStoryReplyBtn");
 
 const requestsBtn = document.getElementById("requestsBtn");
 const requestsBadge = document.getElementById("requestsBadge");
+const chatNavBadge = document.getElementById("chatNavBadge");
 const requestsBackBtn = document.getElementById("requestsBackBtn");
 const requestsList = document.getElementById("requestsList");
 const requestsEmpty = document.getElementById("requestsEmpty");
@@ -191,6 +196,7 @@ let lastKnownFriendSeen = null;
 let cachedMessages = [];
 let chatDocData = {};
 let isFriendTyping = false;
+let readMarkInFlight = false;
 let currentProfileViewUid = null;
 let currentProfileViewData = null;
 let myStatsUnsub = {};
@@ -212,7 +218,7 @@ function getChatId(uidA, uidB) {
 function showScreen(screenEl) {
   const allScreens = [authScreen, homeScreen, chatScreen, profileScreen, profileViewScreen, requestsScreen, blockedScreen, peopleListScreen,
     document.getElementById("exploreScreen"), document.getElementById("reelsScreen"), document.getElementById("groupsScreen"),
-    document.getElementById("notesScreen"), document.getElementById("settingsScreen")];
+    document.getElementById("notesScreen"), document.getElementById("settingsScreen"), document.getElementById("gamesScreen")];
   allScreens.forEach(s => s?.classList.add("hidden"));
   screenEl?.classList.remove("hidden");
   if (typeof showRaazBottomNav === "function") {
@@ -264,12 +270,13 @@ window.addEventListener("load", () => {
 
 // ================= HEARTBEAT =================
 function startHeartbeat() {
-  const uid = auth.currentUser.uid;
-  db.collection("users").doc(uid).set({ lastSeen: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
-
+  stopHeartbeat();
+  const uid = auth.currentUser?.uid;
+  if (!uid || localStorage.getItem("raaz.activity") === "0") return;
+  db.collection("users").doc(uid).set({ lastSeen: firebase.firestore.FieldValue.serverTimestamp(), activityStatus:true }, { merge: true }).catch(()=>{});
   heartbeatInterval = setInterval(() => {
-    if (auth.currentUser) {
-      db.collection("users").doc(auth.currentUser.uid).set({ lastSeen: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    if (auth.currentUser && localStorage.getItem("raaz.activity") !== "0") {
+      db.collection("users").doc(auth.currentUser.uid).set({ lastSeen: firebase.firestore.FieldValue.serverTimestamp(), activityStatus:true }, { merge: true }).catch(()=>{});
     }
   }, 15000);
 }
@@ -346,6 +353,7 @@ loginBtn.addEventListener("click", () => {
 
 // ================= LOGOUT =================
 function doLogout() {
+  if(chatNavBadge) chatNavBadge.classList.add("hidden");
   stopHeartbeat();
   if (unsubscribeChatList) unsubscribeChatList();
   if (unsubscribeRequestsBadge) unsubscribeRequestsBadge();
@@ -517,7 +525,7 @@ async function listenForFeed() {
       renderFeedFromCache();
     }, (err) => {
       console.warn("RAAZ feed listener:", err);
-      feedList.innerHTML = `<div class="feedEmpty feedErrorState"><div class="feedEmptyIcon">↻</div><h3>Feed abhi available nahi hai</h3><p>Connection ya account access check karke dobara try karo.</p><button class="primaryAction feedRetryBtn">Try again</button></div>`;
+      feedList.innerHTML = `<div class="feedEmpty feedErrorState"><div class="feedEmptyIcon">Retry</div><h3>Feed abhi available nahi hai</h3><p>Connection ya account access check karke dobara try karo.</p><button class="primaryAction feedRetryBtn">Try again</button></div>`;
       feedList.querySelector(".feedRetryBtn")?.addEventListener("click",()=>listenForFeed());
     });
 }
@@ -540,17 +548,17 @@ async function renderPostCard(postId, data) {
   const image = data.imageBase64 ? `<img class="postMedia" src="${data.imageBase64}" alt="Post image" loading="lazy">` : "";
   card.innerHTML = `
     <div class="postHeader">
-      <button class="postIdentity">${avatar}<span><strong>${escapeHtml(data.name || "RAAZ User")}</strong><small>@${escapeHtml(data.username || "user")} · ${formatPostTime(data.createdAt)}</small></span></button>
-      <button class="postMoreBtn" aria-label="Post options">⋮</button>
+      <button class="postIdentity">${avatar}<span><strong>${escapeHtml(data.name || "RAAZ User")}</strong><small>@${escapeHtml(data.username || "user")}  -  ${formatPostTime(data.createdAt)}</small></span></button>
+      <button class="postMoreBtn" aria-label="Post options">...</button>
     </div>
     ${caption}
     ${image}
     <div class="postActions">
-      <button class="postAction likeBtn">♡ <span class="likeCount">0</span></button>
-      <button class="postAction commentBtn">💬 <span class="commentCount">0</span></button>
-      <button class="postAction saveBtn">🔖 Save</button>
-      <button class="postAction repostBtn">🔁 Repost</button>
-      <button class="postAction shareBtn">↗ Share</button>
+      <button type="button" class="postAction likeBtn" aria-label="Like post">Like <span class="likeCount">0</span></button>
+      <button type="button" class="postAction commentBtn" aria-label="Comments">Comment <span class="commentCount">0</span></button>
+      <button type="button" class="postAction saveBtn" aria-label="Save post">Save</button>
+      <button type="button" class="postAction repostBtn" aria-label="Repost">Repost</button>
+      <button type="button" class="postAction shareBtn" aria-label="Share post">Share</button>
     </div>
     <div class="commentsArea hidden">
       <div class="commentsList"></div>
@@ -733,16 +741,31 @@ async function createNotification(targetUid, data) {
 function notificationText(d) {
   const who = d.fromName || (d.fromUsername ? "@" + d.fromUsername : "Someone");
   if (d.type === "like") return `<strong>${escapeHtml(who)}</strong> liked your post.`;
-  if (d.type === "comment") return `<strong>${escapeHtml(who)}</strong> commented: “${escapeHtml(d.text || "")}` + `”`;
+  if (d.type === "comment") return `<strong>${escapeHtml(who)}</strong> commented: "${escapeHtml(d.text || "")}` + `"`;
   if (d.type === "follow") return `<strong>${escapeHtml(who)}</strong> started following you.`;
+  if (d.type === "chat_message") return `<strong>${escapeHtml(who)}</strong> sent you a message.`;
+  if (d.type === "reel_like") return `<strong>${escapeHtml(who)}</strong> liked your reel.`;
+  if (d.type === "reel_comment") return `<strong>${escapeHtml(who)}</strong> commented on your reel.`;
+  if (d.type === "story_reply") return `<strong>${escapeHtml(who)}</strong> replied to your story.`;
+  if (d.type === "repost") return `<strong>${escapeHtml(who)}</strong> reposted your post.`;
   return `<strong>${escapeHtml(who)}</strong> sent you a notification.`;
+}
+
+function notificationIcon(type){
+  if(type === "like" || type === "reel_like") return "Like";
+  if(type === "comment" || type === "reel_comment") return "Chat";
+  if(type === "chat_message") return "Message";
+  if(type === "follow") return "+";
+  if(type === "story_reply") return "Story";
+  if(type === "repost") return "Retry";
+  return "*";
 }
 
 function listenForNotifications() {
   if (unsubscribeNotifications) unsubscribeNotifications();
   if (!auth.currentUser) return;
   unsubscribeNotifications = db.collection("users").doc(auth.currentUser.uid).collection("notifications")
-    .orderBy("createdAt", "desc").limit(50).onSnapshot((snap) => {
+    .orderBy("createdAt", "desc").limit(100).onSnapshot((snap) => {
       const unread = snap.docs.filter(d => !d.data().read).length;
       notificationsBadge.textContent = unread > 99 ? "99+" : String(unread);
       notificationsBadge.classList.toggle("hidden", unread === 0);
@@ -752,10 +775,17 @@ function listenForNotifications() {
         const d = doc.data();
         const row = document.createElement("button");
         row.className = `notificationItem ${d.read ? "" : "unread"}`;
-        row.innerHTML = `<span class="notificationIcon">${d.type === "like" ? "♥" : d.type === "comment" ? "💬" : "✦"}</span><span class="notificationText">${notificationText(d)}<small>${formatPostTime(d.createdAt)}</small></span>`;
+        row.innerHTML = `<span class="notificationIcon">${notificationIcon(d.type)}</span><span class="notificationText">${notificationText(d)}<small>${formatPostTime(d.createdAt)}</small></span>`;
         row.addEventListener("click", async () => {
-          await doc.ref.set({ read: true }, { merge: true });
-          if (d.postId) { notificationsOverlay.classList.add("hidden"); activeFeedFilter = "all"; feedFilters.forEach(b => b.classList.toggle("active", b.dataset.feedFilter === "all")); showHomeTab("feed"); }
+          try { await doc.ref.set({ read: true }, { merge: true }); } catch(_) {}
+          notificationsOverlay.classList.add("hidden");
+          if (d.chatId && d.fromUid) {
+            openChat(d.fromUid, d.fromName || "User", d.fromUsername || "user");
+          } else if (d.postId) {
+            activeFeedFilter = "all"; feedFilters.forEach(b => b.classList.toggle("active", b.dataset.feedFilter === "all")); showHomeTab("feed");
+          } else if (d.reelId) {
+            raazGoFeature(reelsScreen,"reels"); listenForReels();
+          }
         });
         notificationsList.appendChild(row);
       });
@@ -824,6 +854,8 @@ publishPostBtn.addEventListener("click", async () => {
       photoBase64: currentPhotoBase64 || null,
       caption,
       imageBase64,
+      viewCount: 0,
+      shareCount: 0,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     createPostOverlay.classList.add("hidden");
@@ -898,7 +930,7 @@ function renderStoryRail() {
   const myStories = grouped.get(me) || [];
   const myTile = document.createElement("button");
   myTile.className = "storyTile storyOwnTile";
-  myTile.innerHTML = `<div class="storyRing"><div class="storyAvatar">${currentPhotoBase64 ? `<img src="${currentPhotoBase64}" alt="">` : escapeHtml((currentUserName || "R").charAt(0).toUpperCase())}</div><span class="storyPlus">＋</span></div><strong>Your Story</strong><small>${myStories.length ? `${myStories.length} active` : "Add story"}</small>`;
+  myTile.innerHTML = `<div class="storyRing"><div class="storyAvatar">${currentPhotoBase64 ? `<img src="${currentPhotoBase64}" alt="">` : escapeHtml((currentUserName || "R").charAt(0).toUpperCase())}</div><span class="storyPlus">+</span></div><strong>Your Story</strong><small>${myStories.length ? `${myStories.length} active` : "Add story"}</small>`;
   myTile.addEventListener("click", () => myStories.length ? openStoryGroup(myStories, 0) : openCreateStory());
   storyRail.appendChild(myTile);
   [...grouped.entries()].filter(([uid]) => uid !== me).forEach(([uid, items]) => {
@@ -951,12 +983,49 @@ function openStoryGroup(items,index) { if (!items.length) return; window.current
 function stopStoryTimer(){ if(storyTimer) clearTimeout(storyTimer); storyTimer=null; }
 async function renderCurrentStory(){
   stopStoryTimer(); const items=window.currentStoryGroup||[], item=items[currentStoryIndex]; if(!item){closeStoryViewer();return;} const d=item.data;
-  storyViewerAvatar.innerHTML=d.photoBase64?`<img src="${d.photoBase64}" alt="">`:escapeHtml((d.name||"R").charAt(0).toUpperCase()); storyViewerName.textContent=d.name||"RAAZ User"; storyViewerTime.textContent=formatStoryTime(d.createdAt);
-  storyViewerContent.innerHTML=d.type==="photo"?`<img class="storyViewerImage" src="${d.imageBase64}" alt="Story">`:`<div class="storyViewerText">${escapeHtml(d.text||"").replace(/\n/g,"<br>")}</div>`;
-  storyProgressBar.style.width=`${((currentStoryIndex+1)/items.length)*100}%`; const mine=d.uid===auth.currentUser?.uid; deleteStoryBtn.classList.toggle("hidden",!mine); if(storyReplyBar) storyReplyBar.classList.toggle("hidden",mine); storyViewerViews.textContent="👁 Loading views..."; window.currentViewedStory=item;
-  try { const views=await db.collection("stories").doc(item.id).collection("views").get(); storyViewerViews.textContent=`👁 ${views.size} views`; if(!mine) await db.collection("stories").doc(item.id).collection("views").doc(auth.currentUser.uid).set({uid:auth.currentUser.uid,viewedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); } catch(_) { storyViewerViews.textContent="👁 Views"; }
+  storyViewerAvatar.innerHTML=d.photoBase64?`<img src="${escapeHtml(d.photoBase64)}" alt="">`:escapeHtml((d.name||"R").charAt(0).toUpperCase()); storyViewerName.textContent=d.name||"RAAZ User"; storyViewerTime.textContent=formatStoryTime(d.createdAt);
+  storyViewerContent.innerHTML=d.type==="photo"?`<img class="storyViewerImage" src="${escapeHtml(d.imageBase64||"")}" alt="Story">`:`<div class="storyViewerText">${escapeHtml(d.text||"").replace(/\n/g,"<br>")}</div>`;
+  storyProgressBar.style.width=`${((currentStoryIndex+1)/items.length)*100}%`; const mine=d.uid===auth.currentUser?.uid; deleteStoryBtn.classList.toggle("hidden",!mine); if(storyReplyBar) storyReplyBar.classList.toggle("hidden",mine); storyViewerViews.textContent="Views Loading views..."; window.currentViewedStory=item;
+  try {
+    const viewsRef=db.collection("stories").doc(item.id).collection("views");
+    if(!mine && auth.currentUser) await viewsRef.doc(auth.currentUser.uid).set({uid:auth.currentUser.uid,viewedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+    const views=await viewsRef.get();
+    storyViewerViews.textContent=`Views ${views.size} ${views.size===1?"view":"views"}`;
+  } catch(_) { storyViewerViews.textContent="Views Views"; }
   storyTimer=setTimeout(nextStory,5000);
 }
+
+async function openStoryViewers(){
+  const item=window.currentViewedStory;
+  if(!item || !storyViewersOverlay || !storyViewersList) return;
+  storyViewersOverlay.classList.remove("hidden");
+  storyViewersList.innerHTML=`<div class="storyViewersEmpty">Viewers load ho rahe hain...</div>`;
+  try{
+    const snap=await db.collection("stories").doc(item.id).collection("views").orderBy("viewedAt","desc").get();
+    if(storyViewersCountLabel) storyViewersCountLabel.textContent=String(snap.size);
+    if(snap.empty){ storyViewersList.innerHTML=`<div class="storyViewersEmpty">Abhi kisi ne story nahi dekhi.</div>`; return; }
+    storyViewersList.innerHTML="";
+    for(const viewDoc of snap.docs){
+      const uid=viewDoc.id, vd=viewDoc.data()||{};
+      let u={};
+      try{ const us=await db.collection("users").doc(uid).get(); if(us.exists) u=us.data()||{}; }catch(_){}
+      const name=u.name||vd.name||"RAAZ User", username=u.username||vd.username||"user";
+      const row=document.createElement("button"); row.type="button"; row.className="storyViewerRow";
+      const avatarStyle=u.photoBase64?`style="background-image:url(${escapeHtml(u.photoBase64)})"`:"";
+      row.innerHTML=`<div class="storyViewerRowAvatar" ${avatarStyle}>${u.photoBase64?"":escapeHtml(name.charAt(0).toUpperCase())}</div><div class="storyViewerRowInfo"><strong>${escapeHtml(name)}</strong><small>@${escapeHtml(username)}  -  ${formatPostTime(vd.viewedAt)}</small></div><span class="storyViewerRowArrow">></span>`;
+      row.addEventListener("click",async()=>{
+        storyViewersOverlay.classList.add("hidden");
+        try{ const fresh=await db.collection("users").doc(uid).get(); if(fresh.exists) openProfileView(uid,fresh.data()); }catch(e){showRaazToast?.(e.message||"Profile load nahi hui.","error");}
+      });
+      storyViewersList.appendChild(row);
+    }
+  }catch(e){
+    storyViewersList.innerHTML=`<div class="storyViewersEmpty">${escapeHtml(e?.message||"Viewers load nahi hue.")}</div>`;
+  }
+}
+closeStoryViewersBtn?.addEventListener("click",()=>storyViewersOverlay?.classList.add("hidden"));
+storyViewersOverlay?.addEventListener("click",e=>{if(e.target===storyViewersOverlay)e.currentTarget.classList.add("hidden")});
+storyViewerViews?.addEventListener("click",openStoryViewers);
 function nextStory(){const items=window.currentStoryGroup||[]; if(currentStoryIndex<items.length-1){currentStoryIndex++;renderCurrentStory();}else closeStoryViewer();}
 function prevStory(){if(currentStoryIndex>0){currentStoryIndex--;renderCurrentStory();}}
 function closeStoryViewer(){stopStoryTimer();storyViewerOverlay.classList.add("hidden");storyReplyBar?.classList.add("hidden");if(storyReplyInput)storyReplyInput.value="";}
@@ -1214,7 +1283,7 @@ async function renderFollowButton(uid, data) {
   const followDoc = await db.collection("users").doc(myUid).collection("following").doc(uid).get();
   const isFollowing = followDoc.exists;
 
-  followBtnArea.innerHTML = `<button id="followToggleBtn" class="followBtn ${isFollowing ? 'following' : ''}">${isFollowing ? '✓ Following' : '+ Follow'}</button>`;
+  followBtnArea.innerHTML = `<button id="followToggleBtn" class="followBtn ${isFollowing ? 'following' : ''}">${isFollowing ? 'OK Following' : '+ Follow'}</button>`;
 
   document.getElementById("followToggleBtn").addEventListener("click", async () => {
     if (isFollowing) {
@@ -1306,69 +1375,43 @@ peopleListBackBtn.addEventListener("click", () => {
 
 async function renderProfileViewActions(uid, data) {
   try {
-      const myUid = auth.currentUser.uid;
-      const chatId = getChatId(myUid, uid);
-    
-      // 1. Kya maine ise block kiya hai?
-      const blockedDoc = await db.collection("users").doc(myUid).collection("blocked").doc(uid).get();
-      if (blockedDoc.exists) {
-        viewActionArea.innerHTML = `<button id="unblockActionBtn" class="viewActionBtn danger">Unblock Karo</button>`;
-        document.getElementById("unblockActionBtn").addEventListener("click", async () => {
-          await unblockUser(uid);
-          renderProfileViewActions(uid, data);
-        });
-        return;
-      }
-    
-      // 2. Kya hum already connected hain (chat list me entry hai)?
-      const chatListDoc = await db.collection("users").doc(myUid).collection("chatsList").doc(chatId).get();
-      if (chatListDoc.exists) {
-        viewActionArea.innerHTML = `<button id="messageActionBtn" class="viewActionBtn">💬 Message Karo</button>`;
-        document.getElementById("messageActionBtn").addEventListener("click", () => {
-          openChat(uid, data.name, data.username);
-        });
-        return;
-      }
-    
-      // 3. Kya maine already request bheji hui hai?
-      const sentDoc = await db.collection("users").doc(myUid).collection("requestsSent").doc(uid).get();
-      if (sentDoc.exists) {
-        viewActionArea.innerHTML = `
-          <button class="viewActionBtn disabled" disabled>Request Bheji Ja Chuki Hai</button>
-          <button id="cancelReqBtn" class="linkBtn">Request Cancel Karo</button>
-        `;
-        document.getElementById("cancelReqBtn").addEventListener("click", async () => {
-          await db.collection("users").doc(myUid).collection("requestsSent").doc(uid).delete();
-          await db.collection("users").doc(uid).collection("requestsReceived").doc(myUid).delete();
-          renderProfileViewActions(uid, data);
-        });
-        return;
-      }
-    
-      // 4. Kya isne mujhe request bheji hai?
-      const receivedDoc = await db.collection("users").doc(myUid).collection("requestsReceived").doc(uid).get();
-      if (receivedDoc.exists) {
-        viewActionArea.innerHTML = `
-          <button id="acceptActionBtn" class="viewActionBtn">✅ Accept Karo</button>
-          <button id="declineActionBtn" class="viewActionBtn secondaryBtn2">Decline Karo</button>
-        `;
-        document.getElementById("acceptActionBtn").addEventListener("click", async () => {
-          await acceptRequest(uid, data.name, data.username);
-          openChat(uid, data.name, data.username);
-        });
-        document.getElementById("declineActionBtn").addEventListener("click", async () => {
-          await declineRequest(uid);
-          renderProfileViewActions(uid, data);
-        });
-        return;
-      }
-    
-      // 5. Kuch bhi connection nahi hai - naya request bhejo
-      viewActionArea.innerHTML = `<button id="sendReqBtn" class="viewActionBtn">➕ Message Request Bhejo</button>`;
-      document.getElementById("sendReqBtn").addEventListener("click", async () => {
-        await sendMessageRequest(uid, data.name, data.username);
-        renderProfileViewActions(uid, data);
-      });
+    const myUid = auth.currentUser.uid;
+    if (uid === myUid) { viewActionArea.innerHTML = ""; return; }
+    const chatId = getChatId(myUid, uid);
+    const blockedDoc = await db.collection("users").doc(myUid).collection("blocked").doc(uid).get();
+    if (blockedDoc.exists) {
+      viewActionArea.innerHTML = `<button id="unblockActionBtn" class="viewActionBtn danger">Unblock</button>`;
+      document.getElementById("unblockActionBtn").addEventListener("click", async () => { await unblockUser(uid); renderProfileViewActions(uid, data); });
+      return;
+    }
+    const [chatDoc, sentDoc, receivedDoc] = await Promise.all([
+      db.collection("users").doc(myUid).collection("chatsList").doc(chatId).get(),
+      db.collection("users").doc(myUid).collection("requestsSent").doc(uid).get(),
+      db.collection("users").doc(myUid).collection("requestsReceived").doc(uid).get()
+    ]);
+    const messageLabel = chatDoc.exists ? "Message" : receivedDoc.exists ? "Accept & Message" : sentDoc.exists ? "Request Sent" : "Message";
+    const disabled = sentDoc.exists && !chatDoc.exists;
+    viewActionArea.innerHTML = `<button id="messageActionBtn" class="viewActionBtn ${disabled ? 'disabled' : ''}" ${disabled ? 'disabled' : ''}>${messageLabel}</button>`;
+    const messageBtn=document.getElementById("messageActionBtn");
+    messageBtn.addEventListener("click", async()=>{
+      try {
+        if(chatDoc.exists){ openChat(uid,data.name,data.username); return; }
+        if(receivedDoc.exists){ await acceptRequest(uid,data.name,data.username); openChat(uid,data.name,data.username); return; }
+        if(sentDoc.exists){ showRaazToast?.("Message request already sent.","info"); return; }
+        await sendMessageRequest(uid,data.name,data.username);
+        renderProfileViewActions(uid,data);
+        showRaazToast?.("Message request sent.","success");
+      } catch(e){ showRaazToast?.(e.message||"Message action failed","error"); }
+    });
+    if(sentDoc.exists && !chatDoc.exists){
+      const cancel=document.createElement("button"); cancel.id="cancelReqBtn"; cancel.className="linkBtn"; cancel.type="button"; cancel.textContent="Cancel request";
+      viewActionArea.appendChild(cancel);
+      cancel.addEventListener("click",async()=>{ try{const b=db.batch();b.delete(db.collection("users").doc(myUid).collection("requestsSent").doc(uid));b.delete(db.collection("users").doc(uid).collection("requestsReceived").doc(myUid));await b.commit();renderProfileViewActions(uid,data);}catch(e){showRaazToast?.(e.message||"Request cancel failed","error");}});
+    }
+    if(receivedDoc.exists){
+      const decline=document.createElement("button"); decline.id="declineActionBtn"; decline.className="linkBtn"; decline.type="button"; decline.textContent="Decline request"; viewActionArea.appendChild(decline);
+      decline.addEventListener("click",async()=>{try{await declineRequest(uid);renderProfileViewActions(uid,data);}catch(e){showRaazToast?.(e.message||"Request decline failed","error");}});
+    }
   } catch(err) {
     console.error("Profile action load", err);
     viewActionArea.innerHTML = `<p class="error">${escapeHtml(err?.message || "Action load nahi hui.")}</p>`;
@@ -1397,7 +1440,7 @@ async function acceptRequest(fromUid, fromName, fromUsername) {
   batch.delete(db.collection("users").doc(fromUid).collection("requestsSent").doc(myUid));
   batch.set(db.collection("users").doc(myUid).collection("chatsList").doc(chatId), {
     friendUid: fromUid, friendName: fromName, friendUsername: fromUsername,
-    lastMessage: "", lastMessageTime: now, lastSenderUid: null, category: "primary", myLastRead: now
+    lastMessage: "", lastMessageTime: now, lastSenderUid: null, category: "primary", unreadCount: 0, myLastRead: now, unreadCount: 0
   }, { merge: true });
   batch.set(db.collection("users").doc(fromUid).collection("chatsList").doc(chatId), {
     friendUid: myUid, friendName: currentUserName, friendUsername: currentUsername,
@@ -1444,8 +1487,8 @@ function loadRequestsScreen() {
             <div class="chatListLastMsg">@${data.fromUsername}</div>
           </div>
           <div class="requestBtns">
-            <button class="reqAcceptBtn">✅</button>
-            <button class="reqDeclineBtn">✖</button>
+            <button class="reqAcceptBtn">OK</button>
+            <button class="reqDeclineBtn">X</button>
           </div>
         `;
         item.querySelector(".reqAcceptBtn").addEventListener("click", async (e) => {
@@ -1486,13 +1529,13 @@ async function blockUser(uid, name, username) {
     name, username, blockedAt: firebase.firestore.FieldValue.serverTimestamp()
   });
 
-  // Chat list se dono taraf se hata do, aur pending requests bhi clear karo
-  await db.collection("users").doc(myUid).collection("chatsList").doc(chatId).delete().catch(() => {});
-  await db.collection("users").doc(uid).collection("chatsList").doc(chatId).delete().catch(() => {});
-  await db.collection("users").doc(myUid).collection("requestsSent").doc(uid).delete().catch(() => {});
-  await db.collection("users").doc(uid).collection("requestsReceived").doc(myUid).delete().catch(() => {});
-  await db.collection("users").doc(myUid).collection("requestsReceived").doc(uid).delete().catch(() => {});
-  await db.collection("users").doc(uid).collection("requestsSent").doc(myUid).delete().catch(() => {});
+  // Security rules allow the caller to change only their own private collections.
+  // The other user's chat/request documents are intentionally left to their own client/backend.
+  const batch=db.batch();
+  batch.delete(db.collection("users").doc(myUid).collection("chatsList").doc(chatId));
+  batch.delete(db.collection("users").doc(myUid).collection("requestsSent").doc(uid));
+  batch.delete(db.collection("users").doc(myUid).collection("requestsReceived").doc(uid));
+  await batch.commit();
 }
 
 async function unblockUser(uid) {
@@ -1544,28 +1587,29 @@ function listenForChatList() {
 
       let primaryCount = 0;
       let secondaryCount = 0;
+      let totalUnreadChats = 0;
+      let totalUnreadMessages = 0;
 
       snapshot.forEach((doc) => {
         const data = doc.data();
         const category = data.category === "secondary" ? "secondary" : "primary";
 
-        const isUnread = category === "primary" &&
-          data.lastSenderUid &&
-          data.lastSenderUid !== myUid &&
-          data.lastMessageTime &&
-          (!data.myLastRead || data.lastMessageTime.toMillis() > data.myLastRead.toMillis());
+        const fallbackUnread = data.lastSenderUid && data.lastSenderUid !== myUid && data.lastMessageTime && (!data.myLastRead || data.lastMessageTime.toMillis() > data.myLastRead.toMillis()) ? 1 : 0;
+        const unreadCount = Math.max(Number(data.unreadCount || 0), fallbackUnread);
+        const isUnread = unreadCount > 0;
+        if(isUnread){ totalUnreadChats++; totalUnreadMessages += unreadCount; }
 
         const item = document.createElement("div");
         item.classList.add("chatListItem");
         if (isUnread) item.classList.add("unreadItem");
         item.innerHTML = `
-          <div class="chatListAvatar" data-avatar-uid="${data.friendUid}" data-fallback-letter="${data.friendName}">${data.friendName.charAt(0).toUpperCase()}</div>
+          <div class="chatListAvatar" data-avatar-uid="${escapeHtml(data.friendUid||"")}" data-fallback-letter="${escapeHtml(data.friendName||"User")}">${escapeHtml((data.friendName||"User").charAt(0).toUpperCase())}</div>
           <div class="chatListText">
-            <div class="chatListName">${data.friendName}</div>
-            <div class="chatListLastMsg">${data.lastMessage || "Naya connection - message bhejo!"}</div>
+            <div class="chatListName">${escapeHtml(data.friendName || "User")}</div>
+            <div class="chatListLastMsg ${isUnread ? "unreadPreview" : ""}">${escapeHtml(data.lastMessage || "Naya connection - message bhejo!")}</div>
           </div>
-          ${isUnread ? '<div class="unreadDot"></div>' : ''}
-          <button class="chatItemMenuBtn">⋮</button>
+          ${isUnread ? `<div class="unreadCount">${unreadCount > 99 ? "99+" : unreadCount}</div>` : ''}
+          <button class="chatItemMenuBtn" type="button" aria-label="Chat options">...</button>
         `;
         item.addEventListener("click", () => openChat(data.friendUid, data.friendName, data.friendUsername));
         item.querySelector(".chatItemMenuBtn").addEventListener("click", (e) => {
@@ -1587,6 +1631,10 @@ function listenForChatList() {
       primarySectionLabel.classList.toggle("hidden", primaryCount === 0);
 
       updateChatListEmptyVisibility(primaryCount + secondaryCount === 0);
+      if(chatNavBadge){ chatNavBadge.textContent = totalUnreadMessages > 99 ? "99+" : String(totalUnreadMessages); chatNavBadge.classList.toggle("hidden", totalUnreadMessages === 0); }
+    }, err => {
+      console.error("Chat list listener", err);
+      if(chatNavBadge) chatNavBadge.classList.add("hidden");
     });
 }
 
@@ -1654,14 +1702,7 @@ function openChat(friendUid, friendName, friendUsername) {
 
   const myUid = auth.currentUser.uid;
 
-  db.collection("users").doc(myUid).collection("chatsList").doc(currentChatId).set({
-    myLastRead: firebase.firestore.FieldValue.serverTimestamp()
-  }, { merge: true });
-
-  // Isse friend ko "seen" tick dikhega
-  db.collection("chats").doc(currentChatId).set({
-    [`lastRead_${myUid}`]: firebase.firestore.FieldValue.serverTimestamp()
-  }, { merge: true });
+  markCurrentChatRead(true);
 
   listenForChatDoc();
   listenForMessages();
@@ -1669,6 +1710,27 @@ function openChat(friendUid, friendName, friendUsername) {
 }
 
 // ================= SEEN TICKS + TYPING (chat-level doc) =================
+async function markCurrentChatRead(markNotifications=false){
+  if(!auth.currentUser || !currentChatId || !currentFriendUid || readMarkInFlight) return;
+  readMarkInFlight=true;
+  const myUid=auth.currentUser.uid, now=firebase.firestore.FieldValue.serverTimestamp();
+  try{
+    const batch=db.batch();
+    batch.set(db.collection("users").doc(myUid).collection("chatsList").doc(currentChatId),{myLastRead:now,unreadCount:0},{merge:true});
+    batch.set(db.collection("chats").doc(currentChatId),{[`lastRead_${myUid}`]:now},{merge:true});
+    await batch.commit();
+    if(markNotifications){
+      try{
+        const snap=await db.collection("users").doc(myUid).collection("notifications").where("read","==",false).limit(100).get();
+        const b2=db.batch(); let count=0;
+        snap.forEach(d=>{const x=d.data()||{};if(x.type==="chat_message"&&x.chatId===currentChatId){b2.set(d.ref,{read:true},{merge:true});count++;}});
+        if(count) await b2.commit();
+      }catch(_){}
+    }
+  }catch(err){ console.warn("markCurrentChatRead",err); }
+  finally{ readMarkInFlight=false; }
+}
+
 function listenForChatDoc() {
   if (unsubscribeChatDoc) unsubscribeChatDoc();
 
@@ -1684,7 +1746,7 @@ function updateTypingDisplay() {
   isFriendTyping = typingField === true;
 
   if (isFriendTyping) {
-    friendStatus.textContent = "✍️ Type kar raha hai...";
+    friendStatus.textContent = "Typing Type kar raha hai...";
     friendStatus.className = "statusText typing";
   } else {
     updateStatusText();
@@ -1712,6 +1774,7 @@ function listenForFriendStatus(friendUid) {
     if (!doc.exists) return;
     const data = doc.data();
     lastKnownFriendSeen = data.lastSeen ? data.lastSeen.toDate() : null;
+    window.friendActivityStatusEnabled = data.activityStatus !== false;
     updateStatusText();
   });
 
@@ -1719,20 +1782,21 @@ function listenForFriendStatus(friendUid) {
 }
 
 function updateStatusText() {
-  if (isFriendTyping) return; // typing text ko override mat karo
+  if (isFriendTyping) return;
+  if (window.friendActivityStatusEnabled === false) { friendStatus.textContent = "Activity status off"; friendStatus.className = "statusText offline"; return; }
   if (!lastKnownFriendSeen) { friendStatus.textContent = ""; return; }
-  const secondsAgo = Math.floor((Date.now() - lastKnownFriendSeen.getTime()) / 1000);
-
-  if (secondsAgo < 25) {
-    friendStatus.textContent = "🟢 Online";
+  const secondsAgo = Math.max(0,Math.floor((Date.now() - lastKnownFriendSeen.getTime()) / 1000));
+  if (secondsAgo < 35) {
+    friendStatus.textContent = "Online";
     friendStatus.className = "statusText online";
-  } else {
-    const minsAgo = Math.floor(secondsAgo / 60);
-    if (minsAgo < 1) friendStatus.textContent = "Abhi active tha";
-    else if (minsAgo < 60) friendStatus.textContent = minsAgo + " min pehle active tha";
-    else friendStatus.textContent = Math.floor(minsAgo / 60) + " ghante pehle active tha";
-    friendStatus.className = "statusText offline";
+    return;
   }
+  const minsAgo = Math.floor(secondsAgo / 60);
+  if (minsAgo < 1) friendStatus.textContent = "Active just now";
+  else if (minsAgo < 60) friendStatus.textContent = `Active ${minsAgo}m ago`;
+  else if (minsAgo < 1440) friendStatus.textContent = `Active ${Math.floor(minsAgo/60)}h ago`;
+  else friendStatus.textContent = `Active ${Math.floor(minsAgo/1440)}d ago`;
+  friendStatus.className = "statusText offline";
 }
 
 // ================= BACK TO HOME =================
@@ -1745,29 +1809,29 @@ backBtn.addEventListener("click", () => {
   clearTypingStatus();
   currentChatId = null;
   currentFriendUid = null;
+  chatDocData = {}; isFriendTyping=false; lastKnownFriendSeen=null;
   raazGoHome(lastHomeTab);
 });
 
 // ================= TYPING INDICATOR =================
 function clearTypingStatus() {
-  if (!currentChatId) return;
+  if (!currentChatId || !auth.currentUser) return Promise.resolve();
   const myUid = auth.currentUser.uid;
-  db.collection("chats").doc(currentChatId).set({
-    [`typing_${myUid}`]: false
-  }, { merge: true });
+  return db.collection("chats").doc(currentChatId).set({[`typing_${myUid}`]:false},{merge:true}).catch(()=>{});
 }
 
+let typingWritePending = false;
 msgInput.addEventListener("input", () => {
-  if (!currentChatId) return;
+  if (!currentChatId || !auth.currentUser) return;
   const myUid = auth.currentUser.uid;
-
-  db.collection("chats").doc(currentChatId).set({
-    [`typing_${myUid}`]: true
-  }, { merge: true });
-
+  if(!typingWritePending){
+    typingWritePending=true;
+    db.collection("chats").doc(currentChatId).set({[`typing_${myUid}`]:true},{merge:true}).finally(()=>{typingWritePending=false;});
+  }
   clearTimeout(typingTimeout);
-  typingTimeout = setTimeout(clearTypingStatus, 2500);
+  typingTimeout=setTimeout(clearTypingStatus,2200);
 });
+msgInput.addEventListener("blur",()=>{clearTimeout(typingTimeout);typingTimeout=setTimeout(clearTypingStatus,600);});
 
 // ================= SEND MESSAGE =================
 async function sendMessage() {
@@ -1775,15 +1839,22 @@ async function sendMessage() {
   if (!text || !currentChatId || !currentFriendUid || !auth.currentUser) return;
   const myUid = auth.currentUser.uid;
   clearTimeout(typingTimeout);
-  clearTypingStatus();
+  await clearTypingStatus();
   sendBtn.disabled = true;
+  const reply = window.raazReplyTarget ? {
+    messageId: window.raazReplyTarget.id,
+    uid: window.raazReplyTarget.uid || "",
+    sender: window.raazReplyTarget.sender || "User",
+    text: window.raazReplyTarget.text || (window.raazReplyTarget.imageBase64 ? "Photo Photo" : "Message")
+  } : null;
   try {
     await db.collection("chats").doc(currentChatId).collection("messages").add({
-      text, sender: currentUserName, uid: myUid,
+      text, sender: currentUserName, uid: myUid, replyTo: reply,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     await updateChatListPreview(text);
     msgInput.value = "";
+    if (window.raazClearReplyComposer) window.raazClearReplyComposer();
   } catch (err) {
     showRaazToast?.(err?.message || "Message send nahi hua.", "error");
   } finally { sendBtn.disabled = false; }
@@ -1814,11 +1885,18 @@ chatPhotoInput.addEventListener("change", (e) => {
 
       const myUid = auth.currentUser.uid;
       Promise.resolve().then(async()=>{
+        const reply = window.raazReplyTarget ? {
+          messageId: window.raazReplyTarget.id,
+          uid: window.raazReplyTarget.uid || "",
+          sender: window.raazReplyTarget.sender || "User",
+          text: window.raazReplyTarget.text || (window.raazReplyTarget.imageBase64 ? "Photo Photo" : "Message")
+        } : null;
         await db.collection("chats").doc(currentChatId).collection("messages").add({
-          imageBase64: compressedBase64, sender: currentUserName, uid: myUid,
+          imageBase64: compressedBase64, sender: currentUserName, uid: myUid, replyTo: reply,
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
-        await updateChatListPreview("📷 Photo");
+        await updateChatListPreview("Photo Photo");
+        if (window.raazClearReplyComposer) window.raazClearReplyComposer();
       }).catch(err=>showRaazToast?.(err?.message || "Photo send nahi hui.", "error"));
     };
     img.src = event.target.result;
@@ -1839,9 +1917,13 @@ async function updateChatListPreview(previewText) {
   }, { merge: true });
   batch.set(db.collection("users").doc(currentFriendUid).collection("chatsList").doc(currentChatId), {
     friendUid: myUid, friendName: currentUserName, friendUsername: currentUsername,
-    lastMessage: previewText, lastMessageTime: now, lastSenderUid: myUid
+    lastMessage: previewText, lastMessageTime: now, lastSenderUid: myUid,
+    unreadCount: firebase.firestore.FieldValue.increment(1)
   }, { merge: true });
   await batch.commit();
+  if(currentFriendUid && currentFriendUid !== myUid){
+    await createNotification(currentFriendUid,{type:"chat_message",fromUid:myUid,fromName:currentUserName,fromUsername:currentUsername,chatId:currentChatId,read:false});
+  }
 }
 
 sendBtn.addEventListener("click", sendMessage);
@@ -1853,10 +1935,15 @@ function listenForMessages() {
 
   unsubscribeMessages = db.collection("chats").doc(currentChatId).collection("messages")
     .orderBy("createdAt", "asc")
-    .limitToLast(100)
+    .limitToLast(200)
     .onSnapshot((snapshot) => {
-      cachedMessages = snapshot.docs.map(doc => doc.data());
+      cachedMessages = snapshot.docs.map(doc => ({id:doc.id,...doc.data()}));
       renderMessagesList();
+      const hasIncoming=cachedMessages.some(m=>m.uid!==auth.currentUser?.uid);
+      if(hasIncoming){ markCurrentChatRead(true); setTimeout(()=>markCurrentChatRead(true),700); }
+    },err=>{
+      console.error("Messages listener",err);
+      messagesDiv.innerHTML=`<div class="chatListEmpty">Messages load nahi hue.<br>${escapeHtml(err?.message||"Firebase error")}</div>`;
     });
 }
 
@@ -1872,8 +1959,11 @@ function formatMsgTime(timestamp) {
 }
 
 function renderMessagesList() {
+  if(!auth.currentUser || !messagesDiv) return;
   const myUid = auth.currentUser.uid;
   const friendLastRead = chatDocData[`lastRead_${currentFriendUid}`];
+  const previousScrollTop=messagesDiv.scrollTop, previousScrollHeight=messagesDiv.scrollHeight, clientHeight=messagesDiv.clientHeight;
+  const wasNearBottom=(previousScrollHeight-previousScrollTop-clientHeight)<90;
 
   messagesDiv.innerHTML = "";
 
@@ -1892,7 +1982,7 @@ function renderMessagesList() {
     let tickHtml = "";
     if (isMine) {
       const seen = friendLastRead && msg.createdAt && friendLastRead.toMillis() >= msg.createdAt.toMillis();
-      tickHtml = `<span class="msgTick ${seen ? 'seen' : ''}">${seen ? '✓✓' : '✓'}</span>`;
+      tickHtml = `<span class="msgTick ${seen ? 'seen' : ''}">${seen ? 'OKOK' : 'OK'}</span>`;
     }
 
     msgEl.innerHTML = `
@@ -1904,7 +1994,11 @@ function renderMessagesList() {
     messagesDiv.appendChild(msgEl);
   });
 
-  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  requestAnimationFrame(()=>{
+    const nextHeight=messagesDiv.scrollHeight;
+    if(wasNearBottom) messagesDiv.scrollTop=nextHeight;
+    else messagesDiv.scrollTop=previousScrollTop;
+  });
 }
 
 // ================= RAAZ V12 FEATURE SYSTEM =================
@@ -1933,7 +2027,7 @@ let activeExploreFilter = "all";
 let unsubscribeReels = null, unsubscribeGroups = null, unsubscribeNotes = null;
 
 function showRaazBottomNav(show){ raazBottomNav?.classList.toggle("hidden", !show); }
-function hideFeatureScreens(){ [exploreScreen,reelsScreen,groupsScreen,notesScreen,settingsScreen].forEach(x=>x?.classList.add("hidden")); }
+function hideFeatureScreens(){ [exploreScreen,reelsScreen,groupsScreen,notesScreen,settingsScreen,gamesScreen].forEach(x=>x?.classList.add("hidden")); }
 function raazGoHome(tab="feed"){
   window.raazProfileOnly = false;
   hideFeatureScreens(); showRaazBottomNav(true); showScreen(homeScreen);
@@ -1954,6 +2048,7 @@ function raazNavigate(name){
     if(name === "create") return openRaazCreateSheet();
     if(name === "explore"){ raazGoFeature(exploreScreen,"explore"); setActiveRaazNav("explore"); renderExplore(""); return; }
     if(name === "reels"){ raazGoFeature(reelsScreen,"reels"); setActiveRaazNav("reels"); listenForReels(); return; }
+    if(name === "games"){ return openGames(); }
     if(name === "profile"){ hideFeatureScreens(); profileBtn?.click(); setActiveRaazNav("profile"); return; }
   } catch(err) {
     console.error("RAAZ navigation error", name, err);
@@ -1975,7 +2070,7 @@ document.getElementById("settingsBackBtn")?.addEventListener("click",()=>raazGoH
 async function renderExplore(term){
   const q=(term||exploreSearchInput?.value||"").trim().toLowerCase();
   if(!exploreResults)return;
-  exploreResults.innerHTML="<div class='featureEmpty'>Searching…</div>";
+  exploreResults.innerHTML="<div class='featureEmpty'>Searching...</div>";
   try{
     let html="";
     if(activeExploreFilter!=="posts" && activeExploreFilter!=="hashtags"){
@@ -1985,13 +2080,13 @@ async function renderExplore(term){
     }
     if(activeExploreFilter!=="people"){
       const posts=feedCache.filter(p=>{const d=p.data||{};return !q || (d.caption||"").toLowerCase().includes(q) || (d.username||"").toLowerCase().includes(q);});
-      posts.slice(0,20).forEach(p=>{html+=`<button class="groupCard explorePostJump" data-post-id="${p.id}"><div class="groupIcon">📝</div><div><strong>@${escapeHtml(p.data.username||"user")}</strong><small>${escapeHtml((p.data.caption||"Post").slice(0,100))}</small></div><span>›</span></button>`;});
+      posts.slice(0,20).forEach(p=>{html+=`<button class="groupCard explorePostJump" data-post-id="${p.id}"><div class="groupIcon">Posts</div><div><strong>@${escapeHtml(p.data.username||"user")}</strong><small>${escapeHtml((p.data.caption||"Post").slice(0,100))}</small></div><span>></span></button>`;});
     }
     if(activeExploreFilter==="hashtags" || q.startsWith("#")){
       const tags=new Set(); feedCache.forEach(p=>{(p.data.caption||"").match(/#[\p{L}\p{N}_]+/gu)?.forEach(t=>tags.add(t.toLowerCase()));});
-      html += [...tags].filter(t=>!q||t.includes(q.replace(/^#/,""))).slice(0,30).map(t=>`<button class="groupCard hashtagJump"><div class="groupIcon">#</div><div><strong>${escapeHtml(t)}</strong><small>Explore hashtag</small></div><span>›</span></button>`).join("");
+      html += [...tags].filter(t=>!q||t.includes(q.replace(/^#/,""))).slice(0,30).map(t=>`<button class="groupCard hashtagJump"><div class="groupIcon">#</div><div><strong>${escapeHtml(t)}</strong><small>Explore hashtag</small></div><span>></span></button>`).join("");
     }
-    exploreResults.innerHTML=html||`<div class="featureEmpty"><div>⌕</div><h3>Kuch nahi mila</h3><p>Search term change karke try karo.</p></div>`;
+    exploreResults.innerHTML=html||`<div class="featureEmpty"><div>Search</div><h3>Kuch nahi mila</h3><p>Search term change karke try karo.</p></div>`;
     exploreResults.querySelectorAll(".exploreOpen").forEach(b=>b.addEventListener("click",async()=>{const d=await db.collection("users").doc(b.dataset.uid).get();if(d.exists)openProfileView(b.dataset.uid,d.data());}));
     exploreResults.querySelectorAll(".explorePostJump").forEach(b=>b.addEventListener("click",()=>{raazGoHome("feed"); setTimeout(()=>document.querySelector(`[data-post-id="${b.dataset.postId}"]`)?.scrollIntoView({behavior:"smooth",block:"center"}),150);}));
     exploreResults.querySelectorAll(".hashtagJump").forEach(b=>b.addEventListener("click",()=>{const tag=b.querySelector("strong")?.textContent||"";activeExploreFilter="posts";if(exploreSearchInput)exploreSearchInput.value=tag;document.querySelectorAll(".exploreChip").forEach(x=>x.classList.toggle("active",x.dataset.exploreFilter==="posts"));renderExplore(tag);}));
@@ -2012,20 +2107,21 @@ function listenForReels(){
       const d=doc.data();
       const c=document.createElement("article");
       c.className="reelCard";
+      c.dataset.reelId=doc.id;
       const media=d.videoUrl||d.videoBase64||"";
       c.innerHTML=`
         <video src="${escapeHtml(media)}" class="reelVideo" playsinline controls loop muted preload="metadata"></video>
         <div class="reelOverlay"><strong>@${escapeHtml(d.username||"user")}</strong><small>${escapeHtml(d.caption||"")}</small></div>
         <div class="reelActions">
-          <button class="reelLike" type="button">♥ <span>${Number(d.likeCount||0)}</span></button>
-          <button class="reelComment" type="button">💬 <span>${Number(d.commentCount||0)}</span></button>
-          <button class="reelShare" type="button">↗</button>
+          <button class="reelLike" type="button">Like <span>${Number(d.likeCount||0)}</span></button>
+          <button class="reelComment" type="button">Chat <span>${Number(d.commentCount||0)}</span></button>
+          <button class="reelShare" type="button">Share</button>
         </div>`;
       c.querySelector(".reelLike").onclick=()=>toggleReelLike(doc.id,d,c);
       c.querySelector(".reelComment").onclick=()=>openReelComments(doc.id,d);
       c.querySelector(".reelShare").onclick=()=>sharePost(doc.id,d);
       reelsList.appendChild(c);
-      hydrateReelLikeState(doc.id,c);
+      hydrateReelCounts(doc.id,c);
     }
     setupReelAutoplay();
   },e=>{
@@ -2033,35 +2129,33 @@ function listenForReels(){
   });
 }
 
-async function hydrateReelLikeState(id,c){
+async function hydrateReelCounts(id,c){
   if(!auth.currentUser||!c) return;
   try{
-    const s=await db.collection("reels").doc(id).collection("likes").doc(auth.currentUser.uid).get();
-    c.querySelector(".reelLike")?.classList.toggle("liked",s.exists);
+    const [mine,allLikes,allComments]=await Promise.all([
+      db.collection("reels").doc(id).collection("likes").doc(auth.currentUser.uid).get(),
+      db.collection("reels").doc(id).collection("likes").get(),
+      db.collection("reels").doc(id).collection("comments").get()
+    ]);
+    c.querySelector(".reelLike")?.classList.toggle("liked",mine.exists);
+    const likeCount=c.querySelector(".reelLike span"), commentCount=c.querySelector(".reelComment span");
+    if(likeCount) likeCount.textContent=String(allLikes.size);
+    if(commentCount) commentCount.textContent=String(allComments.size);
   }catch(e){}
 }
 
 async function toggleReelLike(id,d,c){
-  const uid=auth.currentUser.uid;
-  const reelRef=db.collection("reels").doc(id);
-  const likeRef=reelRef.collection("likes").doc(uid);
+  const uid=auth.currentUser?.uid; if(!uid||!c)return;
+  const likeRef=db.collection("reels").doc(id).collection("likes").doc(uid);
   try{
-    await db.runTransaction(async tx=>{
-      const [reelSnap,likeSnap]=await Promise.all([tx.get(reelRef),tx.get(likeRef)]);
-      const current=Number(reelSnap.data()?.likeCount||0);
-      if(likeSnap.exists){
-        tx.delete(likeRef);
-        tx.update(reelRef,{likeCount:Math.max(0,current-1)});
-      }else{
-        tx.set(likeRef,{uid,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
-        tx.update(reelRef,{likeCount:current+1});
-      }
-    });
-    const likeBtn=c.querySelector(".reelLike");
-    const liked=likeBtn.classList.toggle("liked");
-    const countEl=likeBtn.querySelector("span");
-    if(countEl) countEl.textContent=String(Math.max(0,Number(countEl.textContent||0)+(liked?1:-1)));
-  }catch(e){ alert(e.message||"Reel like failed"); }
+    const snap=await likeRef.get();
+    if(snap.exists) await likeRef.delete();
+    else await likeRef.set({uid,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+    const [mine,allLikes]=await Promise.all([likeRef.get(),db.collection("reels").doc(id).collection("likes").get()]);
+    c.querySelector(".reelLike")?.classList.toggle("liked",mine.exists);
+    const countEl=c.querySelector(".reelLike span"); if(countEl) countEl.textContent=String(allLikes.size);
+    if(!snap.exists && d.uid && d.uid!==uid) await createNotification(d.uid,{type:"reel_like",fromUid:uid,fromName:currentUserName,fromUsername:currentUsername,reelId:id,read:false});
+  }catch(e){ showRaazToast?.(e.message||"Reel like failed","error"); }
 }
 
 function openReelComments(id,d){
@@ -2103,15 +2197,13 @@ async function sendReelComment(){
   const reelRef=db.collection("reels").doc(id);
   try{
     await reelRef.collection("comments").add({uid:auth.currentUser.uid,name:currentUserName,username:currentUsername,text,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
-    await db.runTransaction(async tx=>{
-      const snap=await tx.get(reelRef);
-      tx.update(reelRef,{commentCount:Number(snap.data()?.commentCount||0)+1});
-    });
     if(holder.dataset.owner && holder.dataset.owner!==auth.currentUser.uid){
       await db.collection("users").doc(holder.dataset.owner).collection("notifications").add({type:"reel_comment",fromUid:auth.currentUser.uid,fromName:currentUserName,fromUsername:currentUsername,reelId:id,text,read:false,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
     }
     input.value="";
     const d=(await reelRef.get()).data()||{};
+    const card=document.querySelector(`#reelsList .reelCard[data-reel-id="${CSS.escape(id)}"]`);
+    if(card){ const count=await reelRef.collection("comments").get(); const el=card.querySelector(".reelComment span"); if(el)el.textContent=String(count.size); }
     openReelComments(id,d);
   }catch(e){alert(e.message||"Comment failed");}
 }
@@ -2149,7 +2241,7 @@ async function compressReelForFirestore(file, progressEl){
     const draw=()=>{
       if(video.paused || video.ended || video.currentTime>=video.duration){resolve();return;}
       ctx.drawImage(video,0,0,canvas.width,canvas.height);
-      if(progressEl) progressEl.textContent=`Video compress ho raha hai… ${Math.min(99,Math.round((video.currentTime/video.duration)*100))}%`;
+      if(progressEl) progressEl.textContent=`Video compress ho raha hai... ${Math.min(99,Math.round((video.currentTime/video.duration)*100))}%`;
       requestAnimationFrame(draw);
     }; draw();
   });
@@ -2158,7 +2250,7 @@ async function compressReelForFirestore(file, progressEl){
   await stopped;
   URL.revokeObjectURL(src);
   const blob=new Blob(chunks,{type:"video/webm"});
-  if(blob.size>MAX_BYTES) throw new Error("Video abhi bhi bada hai. 15–20 sec ka short video select karo.");
+  if(blob.size>MAX_BYTES) throw new Error("Video abhi bhi bada hai. 15-20 sec ka short video select karo.");
   return await fileToDataUrl(blob);
 }
 function fileToDataUrl(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(new Error("Video read nahi ho payi."));r.readAsDataURL(file);});}
@@ -2167,10 +2259,10 @@ document.getElementById("publishReelBtn")?.addEventListener("click",async()=>{
   const f=document.getElementById("reelVideoInput")?.files[0],cap=document.getElementById("reelCaptionInput")?.value.trim(),err=document.getElementById("reelError"),btn=document.getElementById("publishReelBtn");
   if(!f){err.textContent="Video select karo.";return;}
   if(f.size>8*1024*1024){err.textContent="Original video 8MB se kam rakho.";return;}
-  btn.disabled=true; err.textContent="Video prepare ho rahi hai…";
+  btn.disabled=true; err.textContent="Video prepare ho rahi hai...";
   try{
     const videoData=await compressReelForFirestore(f,err);
-    await db.collection("reels").add({uid:auth.currentUser.uid,name:currentUserName,username:currentUsername,caption:cap,videoBase64:videoData,likeCount:0,commentCount:0,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+    await db.collection("reels").add({uid:auth.currentUser.uid,name:currentUserName,username:currentUsername,caption:cap,videoBase64:videoData,likeCount:0,commentCount:0,viewCount:0,shareCount:0,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
     document.getElementById("createReelOverlay").classList.add("hidden");
     document.getElementById("reelVideoInput").value="";
     document.getElementById("reelVideoPreview").innerHTML="";
@@ -2186,7 +2278,7 @@ async function listenForGroups(){
   unsubscribeGroups=db.collection("groups").orderBy("createdAt","desc").limit(50).onSnapshot(s=>{
     groupsList.innerHTML="";
     document.getElementById("groupsEmpty")?.classList.toggle("hidden",!s.empty);
-    s.forEach(doc=>{const d=doc.data(),c=document.createElement("div");c.className="groupCard";c.innerHTML=`<div class="groupIcon">${d.type==="channel"?"📢":"👥"}</div><div><strong>${escapeHtml(d.name||"Community")}</strong><small>${escapeHtml(d.bio||"")}</small></div><button class="exploreOpen">${d.type==="channel"?"View":"Join"}</button>`;c.querySelector("button").onclick=()=>joinGroup(doc.id,d);groupsList.appendChild(c);});
+    s.forEach(doc=>{const d=doc.data(),c=document.createElement("div");c.className="groupCard";c.innerHTML=`<div class="groupIcon">${d.type==="channel"?"Channel":"Group"}</div><div><strong>${escapeHtml(d.name||"Community")}</strong><small>${escapeHtml(d.bio||"")}</small></div><button class="exploreOpen">${d.type==="channel"?"View":"Join"}</button>`;c.querySelector("button").onclick=()=>joinGroup(doc.id,d);groupsList.appendChild(c);});
   },err=>{
     console.error("Communities listener",err);
     if(groupsList)groupsList.innerHTML=`<div class="featureEmpty"><h3>Communities load nahi hui</h3><p>${escapeHtml(v15Message(err,"Firebase error"))}</p></div>`;
@@ -2215,8 +2307,29 @@ function loadRaazSettings(){
   if(privateAccountToggle)privateAccountToggle.checked=p;if(activityStatusToggle)activityStatusToggle.checked=a;if(messageRequestsToggle)messageRequestsToggle.checked=m;if(reduceMotionToggle)reduceMotionToggle.checked=r;if(compactUiToggle)compactUiToggle.checked=c;if(autoplayReelsToggle)autoplayReelsToggle.checked=ap;if(raazThemeSelect)raazThemeSelect.value=theme;
   document.documentElement.classList.toggle("reduceMotion",r);document.documentElement.classList.toggle("compactUi",c);document.documentElement.dataset.raazTheme=theme;
 }
-[[privateAccountToggle,"raaz.privateAccount"],[activityStatusToggle,"raaz.activity"],[messageRequestsToggle,"raaz.requests"],[reduceMotionToggle,"raaz.reduceMotion"],[compactUiToggle,"raaz.compactUi"],[autoplayReelsToggle,"raaz.autoplayReels"]].forEach(([el,key])=>el?.addEventListener("change",()=>{localStorage.setItem(key,el.checked?"1":"0");if(key==="raaz.reduceMotion")document.documentElement.classList.toggle("reduceMotion",el.checked);if(key==="raaz.compactUi")document.documentElement.classList.toggle("compactUi",el.checked);if(key==="raaz.autoplayReels")setupReelAutoplay();showRaazToast?.("Setting save ho gayi.","success");}));
+[[privateAccountToggle,"raaz.privateAccount"],[activityStatusToggle,"raaz.activity"],[messageRequestsToggle,"raaz.requests"],[reduceMotionToggle,"raaz.reduceMotion"],[compactUiToggle,"raaz.compactUi"],[autoplayReelsToggle,"raaz.autoplayReels"]].forEach(([el,key])=>el?.addEventListener("change",async()=>{
+  localStorage.setItem(key,el.checked?"1":"0");
+  if(key==="raaz.reduceMotion")document.documentElement.classList.toggle("reduceMotion",el.checked);
+  if(key==="raaz.compactUi")document.documentElement.classList.toggle("compactUi",el.checked);
+  if(key==="raaz.autoplayReels")setupReelAutoplay();
+  if(key==="raaz.activity" && auth.currentUser){
+    try{await db.collection("users").doc(auth.currentUser.uid).set({activityStatus:el.checked},{merge:true});}catch(_){}
+    if(el.checked) startHeartbeat(); else stopHeartbeat();
+  }
+  showRaazToast?.("Setting save ho gayi.","success");
+}));
 loadRaazSettings();
+function renderSettingsQr(){
+  const box=document.getElementById('settingsQrBox');
+  if(!box) return;
+  box.innerHTML='';
+  const uid=auth.currentUser?.uid;
+  if(!uid){box.textContent='Login required';return;}
+  const url=`${location.href.split('#')[0]}#profile-${uid}`;
+  if(typeof QRCode==='function') new QRCode(box,{text:url,width:180,height:180,colorDark:'#111111',colorLight:'#ffffff'});
+  else box.textContent='QR unavailable';
+}
+document.getElementById('openSettingsQrBtn')?.addEventListener('click',renderSettingsQr);
 raazThemeSelect?.addEventListener("change",()=>{const v=raazThemeSelect.value||"midnight";localStorage.setItem("raaz.theme",v);document.documentElement.dataset.raazTheme=v;showRaazToast("Theme updated","success");});
 document.getElementById("openMyProfileFromSettings")?.addEventListener("click",()=>profileBtn?.click());
 document.getElementById("openBlockedFromSettings")?.addEventListener("click",()=>{ loadBlockedScreen(); showScreen(blockedScreen); document.querySelectorAll(".raazNav").forEach(b=>b.classList.toggle("active",b.dataset.raazNav==="profile")); });
@@ -2262,7 +2375,7 @@ document.getElementById("profileSavedBtn")?.addEventListener("click",()=>{
 
 // Avoid scroll bleed when any modal/sheet is open.
 function updateBodyOverlayLock(){
-  const open=[createActionOverlay,createPostOverlay,createStoryOverlay,storyViewerOverlay,notificationsOverlay,document.getElementById("createReelOverlay"),document.getElementById("createGroupOverlay"),document.getElementById("reelCommentsOverlay"),document.getElementById("raazMoreOverlay"),chatItemMenuOverlay].some(el=>el&&!el.classList.contains("hidden"));
+  const open=[createActionOverlay,createPostOverlay,createStoryOverlay,storyViewerOverlay,storyViewersOverlay,notificationsOverlay,document.getElementById("createReelOverlay"),document.getElementById("createGroupOverlay"),document.getElementById("reelCommentsOverlay"),document.getElementById("raazMoreOverlay"),chatItemMenuOverlay].some(el=>el&&!el.classList.contains("hidden"));
   document.body.classList.toggle("overlayOpen",open);
 }
 new MutationObserver(updateBodyOverlayLock).observe(document.body,{subtree:true,attributes:true,attributeFilter:["class"]});
@@ -2317,7 +2430,7 @@ document.getElementById("profilePostsBtn")?.addEventListener("click",async()=>{
     });
     renderFeedFromCache();
   }catch(err){
-    feedList.innerHTML=`<div class="feedEmpty feedErrorState"><div class="feedEmptyIcon">↻</div><h3>My Posts load nahi hui</h3><p>${escapeHtml(err?.message||"Firebase error")}</p><button class="primaryAction myPostsRetry">Try again</button></div>`;
+    feedList.innerHTML=`<div class="feedEmpty feedErrorState"><div class="feedEmptyIcon">Retry</div><h3>My Posts load nahi hui</h3><p>${escapeHtml(err?.message||"Firebase error")}</p><button class="primaryAction myPostsRetry">Try again</button></div>`;
     feedList.querySelector('.myPostsRetry')?.addEventListener('click',()=>document.getElementById('profilePostsBtn')?.click());
   }
 });
@@ -2402,17 +2515,11 @@ document.querySelector('[data-raaz-nav="feed"]')?.addEventListener("click",()=>{
   });
 
   // Close sheets with Android back button when possible.
-  window.addEventListener("popstate", () => {
-    const overlays = ["createActionOverlay","raazMoreOverlay","createPostOverlay","createStoryOverlay","createReelOverlay","createGroupOverlay","reelCommentsOverlay","notificationsOverlay","postActionOverlay","chatItemMenuOverlay","storyViewerOverlay"];
-    for (const id of overlays) {
-      const el=document.getElementById(id);
-      if(el && !el.classList.contains("hidden")){ el.classList.add("hidden"); return; }
-    }
-  });
+  /* legacy popstate router removed by V17.1 */
 })();
 
 
-// ================= RAAZ V15 — FINAL FUNCTIONAL STABILITY LAYER =================
+// ================= RAAZ V15 - FINAL FUNCTIONAL STABILITY LAYER =================
 // Goal: existing architecture ko preserve karte hue every user action ko resilient banana.
 (function installRaazV15Stability(){
   const qs = (s) => document.querySelector(s);
@@ -2462,11 +2569,13 @@ document.querySelector('[data-raaz-nav="feed"]')?.addEventListener("click",()=>{
   raazNavigate = function(name){
     if (!auth.currentUser) return;
     try {
+      if(name && name !== "create") window.raazPushHistory?.(name);
       if(name === "feed") { window.raazProfileOnly=false; return raazGoHome("feed"); }
       if(name === "chats") return raazGoHome("chats");
       if(name === "create") return openRaazCreateSheet();
       if(name === "explore") { raazGoFeature(exploreScreen,"explore"); renderExplore(""); return; }
       if(name === "reels") { raazGoFeature(reelsScreen,"reels"); listenForReels(); return; }
+      if(name === "games") { return openGames(); }
       if(name === "profile") { hideFeatureScreens(); openMyProfileV15(); return; }
     } catch(err){ console.error("V15 navigation",err); showRaazToast?.(v15Message(err,"Screen open nahi ho paayi."),"error"); }
   };
@@ -2503,7 +2612,7 @@ document.querySelector('[data-raaz-nav="feed"]')?.addEventListener("click",()=>{
       const myUid=auth.currentUser.uid;
       const snap=await db.collection("users").doc(myUid).collection("following").doc(uid).get();
       const following=snap.exists;
-      area.innerHTML=`<button id="followToggleBtn" class="followBtn ${following?'following':''}" type="button">${following?'✓ Following':'+ Follow'}</button>`;
+      area.innerHTML=`<button id="followToggleBtn" class="followBtn ${following?'following':''}" type="button">${following?'Following':'+ Follow'}</button>`;
       const btn=byId("followToggleBtn");
       btn?.addEventListener("click",async()=>{
         if(btn.disabled)return;
@@ -2570,7 +2679,7 @@ document.querySelector('[data-raaz-nav="feed"]')?.addEventListener("click",()=>{
       snapshot.forEach(doc=>{
         const d=doc.data()||{}, name=d.fromName||"User", username=d.fromUsername||"user";
         const item=document.createElement("div"); item.className="chatListItem";
-        item.innerHTML=`<div class="chatListAvatar" data-avatar-uid="${doc.id}" data-fallback-letter="${escapeHtml(name)}">${escapeHtml(name.charAt(0).toUpperCase())}</div><div class="chatListText"><div class="chatListName">${escapeHtml(name)}</div><div class="chatListLastMsg">@${escapeHtml(username)}</div></div><div class="requestBtns"><button class="reqAcceptBtn" type="button">✅</button><button class="reqDeclineBtn" type="button">✖</button></div>`;
+        item.innerHTML=`<div class="chatListAvatar" data-avatar-uid="${doc.id}" data-fallback-letter="${escapeHtml(name)}">${escapeHtml(name.charAt(0).toUpperCase())}</div><div class="chatListText"><div class="chatListName">${escapeHtml(name)}</div><div class="chatListLastMsg">@${escapeHtml(username)}</div></div><div class="requestBtns"><button class="reqAcceptBtn" type="button">OK</button><button class="reqDeclineBtn" type="button">X</button></div>`;
         item.querySelector(".reqAcceptBtn")?.addEventListener("click",async e=>{e.stopPropagation();await safeAction(()=>acceptRequest(d.fromUid,d.fromName,d.fromUsername),"Request accept nahi hui.","Request accepted");});
         item.querySelector(".reqDeclineBtn")?.addEventListener("click",async e=>{e.stopPropagation();await safeAction(()=>declineRequest(d.fromUid),"Request decline nahi hui.","Request declined");});
         requestsList.appendChild(item); watchFriendAvatar(d.fromUid);
@@ -2607,7 +2716,7 @@ document.querySelector('[data-raaz-nav="feed"]')?.addEventListener("click",()=>{
   // Modal/sheet UX: Escape closes the topmost overlay.
   document.addEventListener("keydown",e=>{
     if(e.key!=="Escape")return;
-    const ids=["storyViewerOverlay","reelCommentsOverlay","createPostOverlay","createStoryOverlay","createReelOverlay","createGroupOverlay","notificationsOverlay","postActionOverlay","chatItemMenuOverlay","createActionOverlay","raazMoreOverlay"];
+    const ids=["storyViewersOverlay","storyViewerOverlay","reelCommentsOverlay","createPostOverlay","createStoryOverlay","createReelOverlay","createGroupOverlay","notificationsOverlay","postActionOverlay","chatItemMenuOverlay","createActionOverlay","raazMoreOverlay"];
     for(const id of ids){const el=byId(id);if(el&&!el.classList.contains("hidden")){el.classList.add("hidden");e.preventDefault();break;}}
   });
 
@@ -2620,5 +2729,934 @@ document.querySelector('[data-raaz-nav="feed"]')?.addEventListener("click",()=>{
   // Keep service-worker cache/session clean on sign-out.
   window.addEventListener("beforeunload",()=>{ if(v15BlockedUnsub)v15BlockedUnsub(); });
 
-  console.info("RAAZ V15 Functional Stability layer ready");
+  // -------- Professional back navigation: Android/browser back + visible back buttons --------
+  if(!history.state?.raazBase){ history.replaceState({raazBase:true,raazScreen:"home"},"",location.href); }
+  window.raazPushHistory=(screen)=>{ try{ history.pushState({raazBase:true,raazScreen:screen},"",location.href.split("#")[0]+"#raaz-"+screen); }catch(_){} };
+  window.raazGoBack=()=>{ if(history.state?.raazScreen && history.state.raazScreen!=="home") history.back(); else raazGoHome(lastHomeTab); };
+
+  const _raazOpenChat=openChat;
+  openChat=function(friendUid,friendName,friendUsername){ window.raazPushHistory("chat"); return _raazOpenChat(friendUid,friendName,friendUsername); };
+
+  /* legacy popstate router removed by V17.1 */
+
+  function _raazCloseChatScreen(){
+    if(unsubscribeMessages)unsubscribeMessages(); if(unsubscribeFriendStatus)unsubscribeFriendStatus(); if(unsubscribeChatDoc)unsubscribeChatDoc();
+    if(statusRefreshInterval)clearInterval(statusRefreshInterval); if(typingTimeout)clearTimeout(typingTimeout);
+    clearTypingStatus(); currentChatId=null; currentFriendUid=null; chatDocData={}; isFriendTyping=false; lastKnownFriendSeen=null; raazGoHome(lastHomeTab);
+  }
+
+  // Back affordances should always be visible and labelled.
+  const raazBackButtons=[backBtn,profileViewBackBtn,profileBackBtn,peopleListBackBtn,requestsBackBtn,blockedBackBtn,document.getElementById("exploreBackBtn"),document.getElementById("reelsBackBtn"),document.getElementById("groupsBackBtn"),document.getElementById("notesBackBtn"),document.getElementById("settingsBackBtn"),closeNotificationsBtn,closeStoryViewersBtn];
+  raazBackButtons.forEach(btn=>{if(btn){btn.type="button";btn.setAttribute("aria-label","Back");btn.addEventListener("click",()=>{try{history.replaceState({raazBase:true,raazScreen:"home"},"",location.href.split("#")[0]);}catch(_){}},{capture:false});}});
+
+  console.info("RAAZ V15.4 UX polish layer ready");
+})();
+
+/* ================= RAAZ V16 CHAT + GAME CENTER ================= */
+(function(){
+  const $ = id => document.getElementById(id);
+
+  /* ---------- CHAT: reply + reactions + stable composer ---------- */
+  let replyTarget = null;
+  let reactionTargetId = null;
+  let lastTapMessageId = null;
+  let lastTapAt = 0;
+  let swipeStart = null;
+
+  function clearReplyComposer(){
+    replyTarget = null;
+    window.raazReplyTarget = null;
+    const box=$('replyComposer');
+    if(box) box.classList.add('hidden');
+  }
+  window.raazClearReplyComposer = clearReplyComposer;
+
+  function setReplyTarget(msg){
+    if(!msg || !msg.id) return;
+    replyTarget = msg;
+    window.raazReplyTarget = msg;
+    const box=$('replyComposer');
+    if(!box) return;
+    $('replyComposerName').textContent = msg.sender || (msg.uid===auth.currentUser?.uid ? 'You' : 'User');
+    $('replyComposerText').textContent = msg.text || (msg.imageBase64 ? 'Photo Photo' : 'Message');
+    box.classList.remove('hidden');
+    msgInput?.focus();
+  }
+
+  $('cancelReplyBtn')?.addEventListener('click', clearReplyComposer);
+
+  const REACTION_EMOJI = {
+    heart: String.fromCodePoint(0x2764,0xFE0F),
+    laugh: String.fromCodePoint(0x1F602),
+    wow: String.fromCodePoint(0x1F62E),
+    sad: String.fromCodePoint(0x1F622),
+    angry: String.fromCodePoint(0x1F621),
+    like: String.fromCodePoint(0x1F44D)
+  };
+  const LEGACY_REACTION = {LOVE:REACTION_EMOJI.heart,LOL:REACTION_EMOJI.laugh,WOW:REACTION_EMOJI.wow,SAD:REACTION_EMOJI.sad,ANGRY:REACTION_EMOJI.angry,LIKE:REACTION_EMOJI.like};
+  const normalizeReaction = value => LEGACY_REACTION[value] || value || '';
+
+  function reactionSummaryHtml(reactions, myUid){
+    const counts={};
+    Object.values(reactions||{}).forEach(r=>{const emoji=normalizeReaction(r);if(emoji)counts[emoji]=(counts[emoji]||0)+1;});
+    const entries=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,4);
+    if(!entries.length) return '';
+    const myReaction=normalizeReaction(myUid ? reactions?.[myUid] : '');
+    return `<div class="messageReactions">${entries.map(([emoji,count])=>`<button type="button" class="reactionPill ${myReaction===emoji?'mine':''}" data-reaction-view="${escapeHtml(emoji)}" aria-label="Reaction ${escapeHtml(emoji)}">${emoji}<span>${count}</span></button>`).join('')}</div>`;
+  }
+
+  function replyQuoteHtml(reply){
+    if(!reply) return '';
+    const text=reply.text || 'Message';
+    return `<button type="button" class="messageReplyQuote" data-reply-to="${escapeHtml(reply.messageId||'')}"><strong>${escapeHtml(reply.sender||'User')}</strong><span>${escapeHtml(text).slice(0,120)}</span></button>`;
+  }
+
+  function renderMessagesListV16(){
+    if(!auth.currentUser || !messagesDiv) return;
+    const myUid=auth.currentUser.uid;
+    const friendLastRead=chatDocData[`lastRead_${currentFriendUid}`];
+    const previousScrollTop=messagesDiv.scrollTop;
+    const previousScrollHeight=messagesDiv.scrollHeight;
+    const clientHeight=messagesDiv.clientHeight;
+    const wasNearBottom=(previousScrollHeight-previousScrollTop-clientHeight)<100;
+    messagesDiv.innerHTML='';
+
+    cachedMessages.forEach(msg=>{
+      const isMine=msg.uid===myUid;
+      const el=document.createElement('div');
+      el.className=`msg ${isMine?'mine':'theirs'} v16Message`;
+      el.dataset.messageId=msg.id;
+      const content=msg.imageBase64
+        ? `<img src="${escapeHtml(msg.imageBase64)}" class="msgImage" alt="Photo">`
+        : escapeHtml(msg.text||'').replace(/\n/g,'<br>');
+      const seen=!!(isMine && friendLastRead && msg.createdAt && friendLastRead.toMillis()>=msg.createdAt.toMillis());
+      const tick=isMine?`<span class="msgTick ${seen?'seen':''}">${seen?'OKOK':'OK'}</span>`:'';
+      el.innerHTML=`${!isMine?`<span class="sender">${escapeHtml(msg.sender||'User')}</span>`:''}${replyQuoteHtml(msg.replyTo)}<div class="messageContent">${content}</div>${reactionSummaryHtml(msg.reactions,myUid)}<div class="msgMeta">${formatMsgTime(msg.createdAt)} ${tick}</div>`;
+
+      let startX=0,startY=0,startTime=0;
+      el.addEventListener('pointerdown',e=>{startX=e.clientX;startY=e.clientY;startTime=Date.now();swipeStart={el,msg,x:startX,y:startY};});
+      el.addEventListener('pointerup',e=>{
+        const dx=e.clientX-startX, dy=e.clientY-startY;
+        if(Math.abs(dx)>55 && Math.abs(dx)>Math.abs(dy)*1.35){
+          if(dx>0) setReplyTarget(msg);
+          return;
+        }
+        if(Date.now()-startTime>700) return;
+        const now=Date.now();
+        if(lastTapMessageId===msg.id && now-lastTapAt<420){
+          openReactionPicker(msg.id,el);
+          lastTapMessageId=null;
+        }else{
+          lastTapMessageId=msg.id; lastTapAt=now;
+        }
+      });
+      el.querySelector('.messageReplyQuote')?.addEventListener('click',e=>{
+        e.stopPropagation();
+        const targetId=e.currentTarget.dataset.replyTo;
+        const target=messagesDiv.querySelector(`[data-message-id="${CSS.escape(targetId||'')}"]`);
+        target?.scrollIntoView({behavior:'smooth',block:'center'});
+        target?.classList.add('messageFlash');
+        setTimeout(()=>target?.classList.remove('messageFlash'),900);
+      });
+      el.querySelectorAll('.reactionPill').forEach(btn=>btn.addEventListener('click',e=>{
+        e.stopPropagation();
+        openReactionPicker(msg.id,el);
+      }));
+      messagesDiv.appendChild(el);
+    });
+
+    requestAnimationFrame(()=>{
+      const nextHeight=messagesDiv.scrollHeight;
+      if(wasNearBottom) messagesDiv.scrollTop=nextHeight;
+      else messagesDiv.scrollTop=previousScrollTop;
+    });
+  }
+
+  // The existing renderer is intentionally replaced after the original app is loaded.
+  renderMessagesList=renderMessagesListV16;
+
+  function openReactionPicker(messageId,el){
+    reactionTargetId=messageId;
+    const picker=$('messageReactionPicker');
+    if(!picker) return;
+    picker.classList.remove('hidden');
+    const rect=el.getBoundingClientRect();
+    const pickerWidth=Math.min(236,window.innerWidth-20);
+    const maxLeft=Math.max(10,Math.min(window.innerWidth-pickerWidth-10,rect.left));
+    picker.style.width=pickerWidth+'px'; picker.style.left=maxLeft+'px'; picker.style.bottom=Math.max(82,window.innerHeight-rect.top+10)+'px';
+  }
+
+  async function reactToMessage(key){
+    if(!reactionTargetId || !currentChatId || !auth.currentUser) return;
+    const emoji=REACTION_EMOJI[key]||key;
+    const id=reactionTargetId, uid=auth.currentUser.uid;
+    const ref=db.collection('chats').doc(currentChatId).collection('messages').doc(id);
+    try{
+      await db.runTransaction(async tx=>{
+        const snap=await tx.get(ref);
+        if(!snap.exists) throw new Error('Message mil nahi raha.');
+        const data=snap.data()||{};
+        const reactions={...(data.reactions||{})};
+        const old=reactions[uid];
+        if(old===emoji) delete reactions[uid];
+        else reactions[uid]=emoji;
+        tx.update(ref,{reactions});
+      });
+      $('messageReactionPicker')?.classList.add('hidden');
+    }catch(e){ showRaazToast?.(e?.message||'Reaction send nahi hua.','error'); }
+  }
+  const reactionPicker=$('messageReactionPicker');
+  reactionPicker?.querySelectorAll('[data-reaction]').forEach(btn=>{
+    const key=btn.dataset.reaction; btn.textContent=REACTION_EMOJI[key]||'';
+    btn.addEventListener('click',()=>reactToMessage(key));
+  });
+  document.addEventListener('click',e=>{
+    const picker=$('messageReactionPicker');
+    if(picker&&!picker.classList.contains('hidden')&&!picker.contains(e.target)&&!e.target.closest('.v16Message')) picker.classList.add('hidden');
+  });
+
+  // Make the send action include the current reply and avoid the old handler double-send.
+  const v16SendBtn=$('sendBtn');
+  if(v16SendBtn){
+    v16SendBtn.addEventListener('click',e=>{
+      e.stopImmediatePropagation();
+      const text=msgInput.value.trim();
+      if(!text||!currentChatId||!currentFriendUid||!auth.currentUser)return;
+      const myUid=auth.currentUser.uid;
+      clearTimeout(typingTimeout); clearTypingStatus(); v16SendBtn.disabled=true;
+      const reply=replyTarget?{messageId:replyTarget.id,uid:replyTarget.uid||'',sender:replyTarget.sender||'User',text:replyTarget.text||(replyTarget.imageBase64?'Photo Photo':'Message')}:null;
+      db.collection('chats').doc(currentChatId).collection('messages').add({text,sender:currentUserName,uid:myUid,replyTo:reply,createdAt:firebase.firestore.FieldValue.serverTimestamp()})
+        .then(()=>updateChatListPreview(text)).then(()=>{msgInput.value='';clearReplyComposer();}).catch(err=>showRaazToast?.(err?.message||'Message send nahi hua.','error')).finally(()=>{v16SendBtn.disabled=false;});
+    },true);
+  }
+  msgInput?.addEventListener('keypress',e=>{
+    if(e.key==='Enter'&&!e.shiftKey){
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      v16SendBtn?.click();
+    }
+  },true);
+
+  // Typing bubble inside the conversation, like modern messengers.
+  const originalUpdateTypingDisplay=updateTypingDisplay;
+  updateTypingDisplay=function(){
+    originalUpdateTypingDisplay();
+    $('chatTypingIndicator')?.classList.toggle('hidden',!isFriendTyping);
+  };
+
+  /* ---------- GAME CENTER ---------- */
+  const gamesScreen=$('gamesScreen'), gamesBackBtn=$('gamesBackBtn');
+  const ludoPanel=$('ludoPanel'), ludoLobby=$('ludoLobby'), ludoGame=$('ludoGame');
+  const gameCards=$('gameCards'), game2048Panel=$('game2048Panel'), rushPanel=$('rushPanel');
+  let activeGame='';
+  let ludoState=null, ludoUnsub=null, ludoMode='bot';
+
+  function openGames(){
+    if(!auth.currentUser)return;
+    raazGoFeature(gamesScreen,'more');
+    activeGame='';
+    [ludoPanel,game2048Panel,rushPanel].forEach(x=>x?.classList.add('hidden'));
+    gameCards?.classList.remove('hidden');
+  }
+  $('openGamesBtn')?.addEventListener('click',()=>{ $('raazMoreOverlay')?.classList.add('hidden'); openGames(); });
+  $('openGamesHomeBtn')?.addEventListener('click',openGames);
+  $('openGamesHomeBtn')?.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openGames();}});
+  gamesBackBtn?.addEventListener('click',()=>raazGoHome(lastHomeTab));
+
+  document.querySelectorAll('[data-game-launch]').forEach(btn=>btn.addEventListener('click',()=>{
+    const game=btn.dataset.gameLaunch; activeGame=game; gameCards?.classList.add('hidden');
+    if(game==='ludo') openLudoPanel();
+    if(game==='2048') open2048Panel();
+    if(game==='stack') openStackPanel();
+  }));
+  document.querySelectorAll('.gamePanelBackBtn').forEach(btn=>btn.addEventListener('click',closeActiveGame));
+  $('ludoPanelBackBtn')?.addEventListener('click',closeActiveGame);
+
+  function closeActiveGame(){
+    if(ludoUnsub){ludoUnsub();ludoUnsub=null;}
+    [ludoPanel,game2048Panel,rushPanel].forEach(x=>x?.classList.add('hidden'));
+    gameCards?.classList.remove('hidden'); activeGame='';
+  }
+
+  function openLudoPanel(){
+    ludoPanel?.classList.remove('hidden'); game2048Panel?.classList.add('hidden'); rushPanel?.classList.add('hidden');
+    ludoLobby?.classList.remove('hidden'); ludoGame?.classList.add('hidden');
+    $('ludoModeStatus').textContent='Choose your mode'; $('ludoRoomBadge')?.classList.add('hidden');
+  }
+  $('ludoBotModeBtn')?.addEventListener('click',()=>{
+    ludoMode='bot'; $('ludoBotModeBtn').classList.add('active'); $('ludoFriendModeBtn').classList.remove('active'); $('startBotLudoBtn').classList.remove('hidden'); $('friendLudoSetup').classList.add('hidden');
+  });
+  $('ludoFriendModeBtn')?.addEventListener('click',()=>{
+    ludoMode='friend'; $('ludoFriendModeBtn').classList.add('active'); $('ludoBotModeBtn').classList.remove('active'); $('startBotLudoBtn').classList.add('hidden'); $('friendLudoSetup').classList.remove('hidden');
+  });
+  $('startBotLudoBtn')?.addEventListener('click',()=>startLudoBot());
+  $('newLudoGameBtn')?.addEventListener('click',()=>{if(ludoMode==='bot')startLudoBot();else openLudoPanel();});
+
+  // Standard 15x15 Ludo-style cross track (52 cells).
+  const LUDO_PATH=[[6,1],[6,2],[6,3],[6,4],[6,5],[5,6],[4,6],[3,6],[2,6],[1,6],[0,6],[0,7],[0,8],[1,8],[2,8],[3,8],[4,8],[5,8],[6,9],[6,10],[6,11],[6,12],[6,13],[6,14],[7,14],[8,14],[8,13],[8,12],[8,11],[8,10],[8,9],[9,8],[10,8],[11,8],[12,8],[13,8],[14,8],[14,7],[14,6],[13,6],[12,6],[11,6],[10,6],[9,6],[8,5],[8,4],[8,3],[8,2],[8,1],[8,0],[7,0],[6,0]];
+  const LUDO_START=[0,13];
+  const HOME_POS=[[[1,1],[4,1],[1,4],[4,4]],[[10,1],[13,1],[10,4],[13,4]]];
+  const FINISH_POS=[[[7,1],[7,2],[7,3],[7,4],[7,5]],[[13,7],[12,7],[11,7],[10,7],[9,7]]];
+  const SAFE_PATH=new Set([0,8,13,21,26,34,39,47]);
+
+  function freshLudoState(mode='bot',gameId=null){
+    const me=auth.currentUser.uid;
+    return {version:1,gameType:'ludo',mode,gameId,roomCode:gameId?gameId.slice(0,6).toUpperCase():null,hostUid:me,guestUid:mode==='bot'?'BOT':null,status:mode==='bot'?'playing':'waiting',turn:0,turnUid:me,players:[{uid:me,name:currentUserName,username:currentUsername},{uid:mode==='bot'?'BOT':null,name:mode==='bot'?'RAAZ Bot':'Waiting...',username:mode==='bot'?'bot':'friend'}],tokens:[[ -1,-1,-1,-1],[-1,-1,-1,-1]],dice:null,diceByPlayer:[null,null],rolled:false,winner:null,updatedAt:Date.now()};
+  }
+  function playerForState(state){
+    const uid=auth.currentUser?.uid; return state.players.findIndex(p=>p.uid===uid);
+  }
+  function legalTokens(state,p,dice){
+    if(dice==null)return[];
+    const arr=state.tokens[p]||[]; const out=[];
+    arr.forEach((pos,i)=>{
+      if(pos===57)return;
+      if(pos===-1){if(dice===6)out.push(i);return;}
+      if(pos+dice<=57)out.push(i);
+    });
+    return out;
+  }
+  function absPath(player,progress){return (LUDO_START[player]+progress)%52;}
+  function tokenCoord(player,index,progress){
+    if(progress===-1)return HOME_POS[player][index];
+    if(progress>=52&&progress<57)return FINISH_POS[player][progress-52]||FINISH_POS[player][4];
+    if(progress===57)return [7,7];
+    return LUDO_PATH[absPath(player,progress)];
+  }
+  function renderLudoBoard(state){
+    const board=$('ludoBoard'); if(!board)return;
+    board.innerHTML='';
+    const cellMap={};
+    for(let i=0;i<225;i++){
+      const y=Math.floor(i/15),x=i%15,cell=document.createElement('div'); cell.className='ludoCell';
+      const pathIndex=LUDO_PATH.findIndex(c=>c[0]===x&&c[1]===y);
+      if(pathIndex>=0){cell.classList.add('ludoPath'); if(SAFE_PATH.has(pathIndex))cell.classList.add('ludoSafe');}
+      if(x<=5&&y<=5)cell.classList.add('ludoBaseRed');
+      else if(x>=9&&y<=5)cell.classList.add('ludoBaseGreen');
+      else if(x>=9&&y>=9)cell.classList.add('ludoBaseYellow');
+      else if(x<=5&&y>=9)cell.classList.add('ludoBaseBlue');
+      if(x>=6&&x<=8&&y>=6&&y<=8)cell.classList.add('ludoCenter');
+      if((x>=6&&x<=8)||(y>=6&&y<=8))cell.classList.add('ludoCross');
+      board.appendChild(cell); if(pathIndex>=0)cellMap[pathIndex]=cell;
+    }
+    const buckets={};
+    state.tokens.forEach((tokens,p)=>tokens.forEach((prog,i)=>{
+      const [x,y]=tokenCoord(p,i,prog); const key=`${x}-${y}`; (buckets[key]||(buckets[key]=[])).push({p,i,prog});
+    }));
+    Object.entries(buckets).forEach(([key,tokens])=>{
+      const [x,y]=key.split('-').map(Number); const idx=y*15+x; const cell=board.children[idx]; if(!cell)return;
+      tokens.forEach((t,n)=>{
+        const b=document.createElement('button'); b.type='button'; b.className=`ludoToken player${t.p}`; b.textContent=String(t.i+1); b.title=`Pawn ${t.i+1}`;
+        const myP=playerForState(state), legal=state.turn===myP&&state.rolled&&legalTokens(state,myP,state.dice).includes(t.i);
+        if(legal&&t.p===myP){b.classList.add('selectable');b.addEventListener('click',()=>moveLudoToken(t.i));}
+        if(tokens.length>1){b.style.setProperty('--stack',String(n));}
+        cell.appendChild(b);
+      });
+    });
+    const me=playerForState(state);
+    $('ludoTurnLabel').textContent=state.status==='waiting'?'Waiting for friend...':state.winner!==null?`${state.players[state.winner]?.name||'Player'} wins!`:state.turn===me?'Your turn':`${state.players[state.turn]?.name||'Opponent'}'s turn`;
+    $('ludoPlayerLabel').textContent=state.mode==='bot'?'You vs RAAZ Bot':`${state.players[0]?.name||'Player'} vs ${state.players[1]?.name||'Friend'}`;
+    const youHome=(state.tokens?.[me]||[]).filter(v=>v===57).length; const op=me===0?1:0; const opHome=(state.tokens?.[op]||[]).filter(v=>v===57).length;
+    if($('ludoYouScore')) $('ludoYouScore').textContent=`${youHome} / 4 Home`; if($('ludoOpponentScore')) $('ludoOpponentScore').textContent=`${opHome} / 4 Home`;
+    if($('ludoOpponentName')) $('ludoOpponentName').textContent=state.players?.[op]?.name || (state.mode==='bot'?'RAAZ Bot':'Friend');
+    const turnPill=$('ludoTurnPill'); if(turnPill){turnPill.textContent=state.status==='waiting'?'WAITING':state.winner!==null?'WINNER':state.turn===me?'YOUR TURN':'THEIR TURN';turnPill.classList.toggle('yourTurn',state.turn===me&&state.winner===null);}
+    const diceMine=state.diceByPlayer?.[me]; const diceOpp=state.diceByPlayer?.[op];
+    $('ludoDiceValue').textContent=diceMine==null?'ROLL':String(diceMine);
+    if($('ludoOpponentDice')) $('ludoOpponentDice').textContent=diceOpp==null?'--':String(diceOpp);
+    $('ludoDiceBtn').disabled=state.status!=='playing'||state.turn!==me||state.rolled||state.winner!==null;
+    $('ludoTip').textContent=state.winner!==null?'WIN Game over - New Game dabao.':state.turn!==me?'Opponent ki turn hai...':state.rolled?(legalTokens(state,me,state.dice).length?'Pawn choose karo.':'Is roll par legal move nahi hai.'):'ROLL Roll the dice';
+  }
+  function commitLudoState(next){
+    ludoState=next; next.updatedAt=Date.now(); renderLudoBoard(next);
+    if(next.mode==='friend'&&next.gameId) db.collection('games').doc(next.gameId).set(next,{merge:true}).catch(e=>showRaazToast?.(e.message||'Game sync nahi hua.','error'));
+  }
+  function setLudoDice(state,p,value){
+    const next={...state,dice:value}; next.diceByPlayer=[...(state.diceByPlayer||[null,null])]; next.diceByPlayer[p]=value; return next;
+  }
+  function moveLudoTokenForPlayer(index,p){
+    if(!ludoState||ludoState.status!=='playing'||ludoState.turn!==p||!ludoState.rolled)return;
+    const dice=ludoState.dice, legal=legalTokens(ludoState,p,dice); if(!legal.includes(index))return;
+    const tokens=ludoState.tokens.map(a=>a.slice()); let next=tokens[p][index]; next=next===-1?0:next+dice; tokens[p][index]=next;
+    if(next<52){
+      const land=absPath(p,next),op=1-p;
+      tokens[op]=tokens[op].map(pos=>{if(pos>=0&&pos<52&&absPath(op,pos)===land&&!SAFE_PATH.has(land))return -1;return pos;});
+    }
+    const won=tokens[p].every(v=>v===57);
+    const nextTurn=dice===6&&!won?p:1-p;
+    const diceByPlayer=[...(ludoState.diceByPlayer||[null,null])]; diceByPlayer[p]=dice;
+    const nextState={...ludoState,tokens,dice:null,diceByPlayer,rolled:false,winner:won?p:null,turn:won?p:nextTurn,turnUid:ludoState.players[won?p:nextTurn]?.uid||''};
+    commitLudoState(nextState);
+    if(nextState.mode==='bot'&&nextState.winner===null&&nextState.turn===1)setTimeout(botLudoTurn,700);
+  }
+  function rollLudoDice(){
+    if(!ludoState||ludoState.status!=='playing'||ludoState.winner!==null)return;
+    const me=playerForState(ludoState); if(ludoState.turn!==me||ludoState.rolled)return;
+    const dice=Math.floor(Math.random()*6)+1; const diceBtn=$('ludoDiceBtn'); diceBtn?.classList.remove('rolling'); void diceBtn?.offsetWidth; diceBtn?.classList.add('rolling');
+    ludoState=setLudoDice({...ludoState,dice:null,rolled:true},me,dice);
+    if(!legalTokens(ludoState,me,dice).length){
+      ludoState={...ludoState,rolled:false};
+      if(dice!==6)ludoState.turn=1-me;
+      ludoState.turnUid=ludoState.players[ludoState.turn]?.uid||'';
+    }
+    commitLudoState(ludoState);
+    if(ludoState.mode==='bot'&&ludoState.turn===1)setTimeout(botLudoTurn,650);
+  }
+  $('ludoDiceBtn')?.addEventListener('click',rollLudoDice);
+  function moveLudoToken(index){
+    const p=playerForState(ludoState); if(p<0)return; moveLudoTokenForPlayer(index,p);
+  }
+  function botLudoTurn(){
+    if(!ludoState||ludoState.mode!=='bot'||ludoState.turn!==1||ludoState.winner!==null||ludoState.rolled)return;
+    const dice=Math.floor(Math.random()*6)+1;
+    let botState=setLudoDice({...ludoState,dice:null,rolled:true},1,dice);
+    const legal=legalTokens(botState,1,dice);
+    if(!legal.length){
+      botState.rolled=false;
+      if(dice!==6)botState.turn=0;
+      botState.turnUid=botState.players[botState.turn]?.uid||'';
+      commitLudoState(botState);
+      if(dice===6)setTimeout(botLudoTurn,700);
+      return;
+    }
+    // Smart bot: finish, capture, then advance the furthest legal pawn.
+    let best=legal[0],bestScore=-1e9;
+    legal.forEach(i=>{const pos=botState.tokens[1][i],np=pos===-1?0:pos+dice;let score=np*2;if(np===57)score+=1000;const land=np<52?absPath(1,np):-1;if(land>=0&&botState.tokens[0].some(x=>x>=0&&x<52&&absPath(0,x)===land&&!SAFE_PATH.has(land)))score+=250;if(pos===-1)score+=40;if(score>bestScore){bestScore=score;best=i;}});
+    ludoState=botState; renderLudoBoard(botState);
+    setTimeout(()=>moveLudoTokenForPlayer(best,1),520);
+  }
+  function startLudoBot(){
+    if(ludoUnsub){ludoUnsub();ludoUnsub=null;}
+    ludoMode='bot'; ludoState=freshLudoState('bot'); ludoState.diceByPlayer=[null,null]; ludoLobby?.classList.add('hidden'); ludoGame?.classList.remove('hidden'); $('ludoModeStatus').textContent='Solo  -  RAAZ Bot'; renderLudoBoard(ludoState);
+  }
+
+  async function createLudoRoom(){
+    try{
+      let code='',ref=null;
+      for(let i=0;i<5;i++){
+        const candidate=Array.from(crypto.getRandomValues(new Uint32Array(6)),n=>'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[n%26]).join('');
+        const r=db.collection('games').doc(candidate); const existing=await r.get();
+        if(!existing.exists){code=candidate;ref=r;break;}
+      }
+      if(!ref) throw new Error('Room code generate nahi hua. Dobara try karo.');
+      const state=freshLudoState('friend',ref.id); state.status='waiting'; state.guestUid=null; state.roomCode=code; state.players[1]={uid:null,name:'Waiting...',username:'friend'};
+      await ref.set(state);
+      $('ludoRoomCodeInput').value=code;
+      $('ludoLobbyMessage').innerHTML=`Room ready: <strong>${code}</strong>  -  code friend ko RAAZ chat me bhejo.`;
+      try{await navigator.clipboard?.writeText(`${location.href.split('#')[0]}#ludo-${code}`);}catch(_){}
+      showRaazToast?.('Ludo room link copy ho gaya.','success');
+      listenLudoRoom(code,true);
+    }catch(e){$('ludoLobbyMessage').textContent=e.message||'Room create nahi hua.';}
+  }
+  $('createLudoRoomBtn')?.addEventListener('click',createLudoRoom);
+  async function joinLudoRoom(){
+    const code=($('ludoRoomCodeInput')?.value||'').trim().toUpperCase(); if(!/^[A-Z0-9]{6}$/.test(code)){ $('ludoLobbyMessage').textContent='6-character room code daalo.'; return; }
+    let gameId=code;
+    try{
+      let ref=db.collection('games').doc(code),snap=await ref.get();
+      if(!snap.exists)throw new Error('Room nahi mila.');
+      const d=snap.data()||{}; if(d.gameType!=='ludo'||d.status!=='waiting')throw new Error('Ye room ab available nahi hai.'); if(d.hostUid===auth.currentUser.uid)throw new Error('Ye tumhara apna room hai.');
+      await ref.update({guestUid:auth.currentUser.uid,players:[d.players[0],{uid:auth.currentUser.uid,name:currentUserName,username:currentUsername}],status:'playing',turn:0,turnUid:d.players[0]?.uid||d.hostUid,updatedAt:Date.now(),dice:null,diceByPlayer:[null,null],rolled:false});
+      listenLudoRoom(gameId,false);
+    }catch(e){$('ludoLobbyMessage').textContent=e.message||'Room join nahi hua.';}
+  }
+  $('joinLudoRoomBtn')?.addEventListener('click',joinLudoRoom);
+  function listenLudoRoom(gameId,isHost){
+    if(ludoUnsub)ludoUnsub();
+    ludoMode='friend'; $('ludoModeStatus').textContent='Friend match'; ludoLobby?.classList.add('hidden'); ludoGame?.classList.remove('hidden');
+    ludoUnsub=db.collection('games').doc(gameId).onSnapshot(snap=>{
+      if(!snap.exists){showRaazToast?.('Game room close ho gaya.','error');closeActiveGame();return;}
+      ludoState=snap.data(); ludoState.gameId=gameId; $('ludoRoomBadge')?.classList.remove('hidden'); $('ludoRoomBadge').textContent=gameId.slice(0,6).toUpperCase(); renderLudoBoard(ludoState);
+    },err=>showRaazToast?.(err.message||'Game sync error','error'));
+  }
+  function openLudoInviteFromHash(){
+    const m=location.hash.match(/^#ludo-(.+)$/); if(!m||!auth.currentUser)return;
+    openGames(); openLudoPanel(); $('ludoFriendModeBtn')?.click(); $('ludoRoomCodeInput').value=m[1]; joinLudoRoom(); history.replaceState({raazBase:true,raazScreen:'games'},'',location.href.split('#')[0]+'#raaz-games');
+  }
+  setTimeout(openLudoInviteFromHash,700);
+
+  /* ---------- 2048 ---------- */
+  let board2048=[],score2048=0,best2048=Number(localStorage.getItem('raaz.2048.best')||0),touch2048=null;
+  function open2048Panel(){ludoPanel?.classList.add('hidden');rushPanel?.classList.add('hidden');game2048Panel?.classList.remove('hidden');$('best2048').textContent=best2048;new2048();}
+  function new2048(){board2048=Array(16).fill(0);score2048=0;add2048Tile();add2048Tile();render2048();}
+  function add2048Tile(){const empty=board2048.map((v,i)=>v?null:i).filter(v=>v!==null);if(!empty.length)return;board2048[empty[Math.floor(Math.random()*empty.length)]]=Math.random()<.9?2:4;}
+  function render2048(){const b=$('board2048');if(!b)return;b.innerHTML='';board2048.forEach(v=>{const c=document.createElement('div');c.className='tile2048 '+(v?'tile'+v:'');c.textContent=v||'';b.appendChild(c);});$('score2048').textContent=score2048;$('score2048Big').textContent=score2048;$('best2048').textContent=best2048;}
+  function move2048(dir){
+    const old=board2048.join(','); const lines=[];
+    for(let r=0;r<4;r++)lines.push(board2048.slice(r*4,r*4+4));
+    let changed=false;
+    function merge(a){let x=a.filter(Boolean),out=[];for(let i=0;i<x.length;i++){if(x[i]===x[i+1]){const n=x[i]*2;out.push(n);score2048+=n;i++;}else out.push(x[i]);}while(out.length<4)out.push(0);return out;}
+    if(dir==='left')for(let r=0;r<4;r++)lines[r]=merge(lines[r]);
+    if(dir==='right')for(let r=0;r<4;r++)lines[r]=merge(lines[r].reverse()).reverse();
+    if(dir==='up'||dir==='down')for(let c=0;c<4;c++){let col=lines.map(r=>r[c]);if(dir==='down')col.reverse();col=merge(col);if(dir==='down')col.reverse();col.forEach((v,r)=>lines[r][c]=v);}
+    board2048=lines.flat();changed=old!==board2048.join(',');
+    if(changed){add2048Tile();if(score2048>best2048){best2048=score2048;localStorage.setItem('raaz.2048.best',best2048);}render2048();}
+  }
+  $('new2048Btn')?.addEventListener('click',new2048);
+  $('board2048')?.addEventListener('keydown',e=>{const m={ArrowLeft:'left',ArrowRight:'right',ArrowUp:'up',ArrowDown:'down'}[e.key];if(m){e.preventDefault();move2048(m);}});
+  $('board2048')?.addEventListener('touchstart',e=>{const t=e.changedTouches[0];touch2048={x:t.clientX,y:t.clientY};},{passive:true});
+  $('board2048')?.addEventListener('touchend',e=>{if(!touch2048)return;const t=e.changedTouches[0],dx=t.clientX-touch2048.x,dy=t.clientY-touch2048.y;if(Math.max(Math.abs(dx),Math.abs(dy))<35)return;move2048(Math.abs(dx)>Math.abs(dy)?(dx>0?'right':'left'):(dy>0?'down':'up'));touch2048=null;},{passive:true});
+  window.addEventListener('keydown',e=>{if(game2048Panel?.classList.contains('hidden'))return;const m={ArrowLeft:'left',ArrowRight:'right',ArrowUp:'up',ArrowDown:'down'}[e.key];if(m){e.preventDefault();move2048(m);}});
+
+  /* ---------- Stack Tower (replaces Neon Rush) ---------- */
+  let stackTimer=null,stackRunning=false,stackScore=0,stackCombo=1,stackLevel=1;
+  let stackBlocks=[],stackCurrent={x:0,w:0,dir:1,speed:1.5};
+  const stackColors=['#ff4b12','#ff7a32','#ffb12b','#ff5a5f','#8d5cff','#2dd4bf'];
+  function openStackPanel(){ludoPanel?.classList.add('hidden');game2048Panel?.classList.add('hidden');rushPanel?.classList.remove('hidden');resetStack();}
+  function resetStack(){
+    clearInterval(stackTimer); stackRunning=false; stackScore=0; stackCombo=1; stackLevel=1; stackBlocks=[];
+    $('rushScore').textContent='0'; $('rushTime').textContent='LEVEL 1'; $('rushCombo').textContent='Combo x1';
+    const skyline=$('stackSkyline'); if(skyline)skyline.innerHTML='';
+    const target=$('rushTarget'); if(target){target.style.width='72%';target.style.left='14%';target.style.bottom='22px';target.style.top='auto';target.style.background=stackColors[0];target.textContent='';}
+    $('rushStartOverlay')?.classList.remove('hidden');
+  }
+  function renderStackBlocks(){
+    const skyline=$('stackSkyline'); if(!skyline)return; skyline.innerHTML='';
+    stackBlocks.forEach((b,i)=>{
+      const el=document.createElement('div'); el.className='stackPlacedBlock';
+      el.style.width=b.w+'%'; el.style.left=b.x+'%'; el.style.bottom=(22+i*24)+'px'; el.style.background=stackColors[i%stackColors.length]; el.style.boxShadow=`0 8px 22px ${stackColors[i%stackColors.length]}55`;
+      skyline.appendChild(el);
+    });
+  }
+  function startStack(){
+    if(stackRunning)return; stackRunning=true; $('rushStartOverlay')?.classList.add('hidden');
+    stackBlocks=[]; stackScore=0; stackCombo=1; stackLevel=1;
+    const first={x:14,w:72}; stackBlocks.push(first); renderStackBlocks();
+    spawnStackBlock();
+    clearInterval(stackTimer); stackTimer=setInterval(()=>{
+      if(!stackRunning)return;
+      const speed=1.2+Math.min(4.5,stackLevel*.12);
+      stackCurrent.x += stackCurrent.dir*speed;
+      if(stackCurrent.x<=3){stackCurrent.x=3;stackCurrent.dir=1;}
+      if(stackCurrent.x+stackCurrent.w>=97){stackCurrent.x=97-stackCurrent.w;stackCurrent.dir=-1;}
+      const t=$('rushTarget'); if(t){t.style.left=stackCurrent.x+'%';}
+    },30);
+  }
+  function spawnStackBlock(){
+    const last=stackBlocks[stackBlocks.length-1]||{x:14,w:72};
+    stackCurrent={x:3,w:last.w,dir:1,speed:1.5};
+    if(Math.random()<.5)stackCurrent.dir=-1;
+    const t=$('rushTarget'); if(t){t.style.width=stackCurrent.w+'%';t.style.left=stackCurrent.x+'%';t.style.bottom=(22+stackBlocks.length*24)+'px';t.style.top='auto';t.style.background=stackColors[stackBlocks.length%stackColors.length];}
+    $('rushTime').textContent='LEVEL '+stackLevel;
+  }
+  function dropStackBlock(){
+    if(!stackRunning)return;
+    const last=stackBlocks[stackBlocks.length-1]||{x:14,w:72};
+    const a=stackCurrent.x,b=last.x, left=Math.max(a,b), right=Math.min(a+stackCurrent.w,b+last.w), overlap=right-left;
+    if(overlap<=3){
+      stackRunning=false; clearInterval(stackTimer);
+      const best=Math.max(stackScore,Number(localStorage.getItem('raaz.stack.best')||0));
+      if(stackScore>Number(localStorage.getItem('raaz.stack.best')||0))localStorage.setItem('raaz.stack.best',stackScore);
+      $('rushStartOverlay').innerHTML=`<strong>Tower over</strong><span>Score ${stackScore}  -  Best ${best}</span><button id="restartRushBtn" class="primaryAction">Play again</button>`;
+      $('rushStartOverlay').classList.remove('hidden'); $('restartRushBtn').onclick=resetStack; return;
+    }
+    const perfect=Math.abs((a+stackCurrent.w/2)-(b+last.w/2))<3.5;
+    const nx=left,nw=overlap;
+    stackBlocks.push({x:nx,w:nw}); stackScore+=perfect?2*stackCombo:stackCombo; stackCombo=perfect?Math.min(12,stackCombo+1):1; stackLevel=stackBlocks.length;
+    $('rushScore').textContent=stackScore; $('rushCombo').textContent='Combo x'+stackCombo; renderStackBlocks(); spawnStackBlock();
+  }
+  $('startRushBtn')?.addEventListener('click',startStack);
+  $('rushTarget')?.addEventListener('click',dropStackBlock);
+  $('rushArena')?.addEventListener('pointerdown',e=>{if(stackRunning&&e.target!==$('rushTarget')){dropStackBlock();}});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden&&stackRunning){clearInterval(stackTimer);stackRunning=false;$('rushStartOverlay')?.classList.remove('hidden');}});
+
+  // History support for Game Center.
+  /* legacy popstate router removed by V17.1 */
+  document.addEventListener('visibilitychange',()=>{if(document.hidden&&stackRunning){clearInterval(stackTimer);stackRunning=false;$('rushStartOverlay')?.classList.remove('hidden');}});
+
+  // Cleanup game listener on logout.
+  const oldLogout=window.doLogout;
+  if(typeof oldLogout==='function'){
+    window.doLogout=async function(){if(ludoUnsub){ludoUnsub();ludoUnsub=null;}clearInterval(stackTimer);return oldLogout.apply(this,arguments);};
+  }
+
+  console.info('RAAZ V16 chat reactions + Game Center + Stack Tower ready');
+})();
+
+
+/* ================= RAAZ V16.3 - UNIVERSAL BACK NAVIGATION ================= */
+(function installRaazUniversalBack(){
+  const byId = id => document.getElementById(id);
+  const visible = el => !!el && !el.classList.contains('hidden');
+
+  function closeOverlayFirst(){
+    const ids=['storyViewersOverlay','storyViewerOverlay','reelCommentsOverlay','createPostOverlay','createStoryOverlay','createReelOverlay','createGroupOverlay','notificationsOverlay','postActionOverlay','chatItemMenuOverlay','createActionOverlay','raazMoreOverlay'];
+    for(const id of ids){ const el=byId(id); if(visible(el)){ el.classList.add('hidden'); return true; } }
+    return false;
+  }
+
+  function goBack(){
+    if(closeOverlayFirst()) return;
+    try{
+      if(visible(byId('gamesScreen'))){
+        if(visible(byId('ludoPanel'))){ byId('ludoPanelBackBtn')?.click(); return; }
+        if(visible(byId('game2048Panel')) || visible(byId('rushPanel'))){ byId('game2048Panel')?.classList.contains('hidden') ? byId('rushPanel')?.querySelector('.gamePanelBackBtn')?.click() : byId('game2048Panel')?.querySelector('.gamePanelBackBtn')?.click(); return; }
+        raazGoHome(lastHomeTab || 'feed'); return;
+      }
+      if(visible(chatScreen)){ if(typeof window.raazCloseChatForBack==='function') return window.raazCloseChatForBack(); return raazGoHome(lastHomeTab || 'feed'); }
+      if(visible(peopleListScreen)){ peopleListBackBtn?.click(); return; }
+      if(visible(requestsScreen)){ requestsBackBtn?.click(); return; }
+      if(visible(blockedScreen)){ blockedBackBtn?.click(); return; }
+      if(visible(profileViewScreen)){ profileViewBackBtn?.click(); return; }
+      if(visible(exploreScreen)||visible(reelsScreen)||visible(groupsScreen)||visible(notesScreen)||visible(settingsScreen)){
+        raazGoHome(lastHomeTab || 'feed'); return;
+      }
+      if(visible(profileScreen)){ raazGoHome(lastHomeTab || 'feed'); return; }
+      if(visible(homeScreen)) return;
+    }catch(err){ console.error('RAAZ back navigation',err); raazGoHome(lastHomeTab || 'feed'); }
+  }
+  window.raazUniversalBack=goBack;
+
+  const pageBackIds=['backBtn','profileViewBackBtn','profileBackBtn','requestsBackBtn','blockedBackBtn','peopleListBackBtn','exploreBackBtn','reelsBackBtn','groupsBackBtn','notesBackBtn','settingsBackBtn','gamesBackBtn'];
+  pageBackIds.forEach(id=>{
+    const btn=byId(id); if(!btn) return;
+    btn.type='button'; btn.setAttribute('aria-label','Back'); btn.title='Back';
+    btn.addEventListener('click',e=>{ e.preventDefault(); e.stopImmediatePropagation(); goBack(); },true);
+  });
+
+  // Android/browser back: overlays close first, then app pages.
+  /* legacy popstate router removed by V17.1 */
+
+  // Hardware/browser back can arrive without a useful app history state in file previews.
+  if(!history.state?.raazV163Base){
+    try{ history.replaceState({...(history.state||{}),raazV163Base:true,raazScreen:'home'},'',location.href); }catch(_){ }
+  }
+})();
+/* ================= RAAZ V16.4 - UNIVERSAL NAVIGATION + BUG FIXES ================= */
+(function installRaazV164(){
+  const byId=id=>document.getElementById(id);
+  const visible=el=>!!el&&!el.classList.contains('hidden');
+  const overlays=['storyViewersOverlay','storyViewerOverlay','reelCommentsOverlay','createPostOverlay','createStoryOverlay','createReelOverlay','createGroupOverlay','notificationsOverlay','postActionOverlay','chatItemMenuOverlay','createActionOverlay','raazMoreOverlay','messageReactionPicker'];
+
+  function closeOverlayFirst(){
+    for(const id of overlays){const el=byId(id);if(visible(el)){el.classList.add('hidden');if(id==='messageReactionPicker')byId(id).style.left='-9999px';return true;}}
+    return false;
+  }
+  function closeChatDirect(){
+    try{if(unsubscribeMessages)unsubscribeMessages();if(unsubscribeFriendStatus)unsubscribeFriendStatus();if(unsubscribeChatDoc)unsubscribeChatDoc();if(statusRefreshInterval)clearInterval(statusRefreshInterval);if(typingTimeout)clearTimeout(typingTimeout);clearTypingStatus();}catch(_){ }
+    currentChatId=null;currentFriendUid=null;chatDocData={};isFriendTyping=false;lastKnownFriendSeen=null;
+    raazGoHome(lastHomeTab||'feed');
+  }
+  function closeGamePanelDirect(){
+    try{if(ludoUnsub){ludoUnsub();ludoUnsub=null;}}catch(_){ }
+    [byId('ludoPanel'),byId('game2048Panel'),byId('rushPanel')].forEach(x=>x?.classList.add('hidden'));
+    byId('gameCards')?.classList.remove('hidden');
+  }
+  function goBack(){
+    if(closeOverlayFirst())return;
+    try{
+      if(visible(byId('gamesScreen'))){
+        if(visible(byId('ludoPanel'))||visible(byId('game2048Panel'))||visible(byId('rushPanel'))){closeGamePanelDirect();return;}
+        raazGoHome(lastHomeTab||'feed');return;
+      }
+      if(visible(chatScreen)){closeChatDirect();return;}
+      if(visible(peopleListScreen)){
+        if(currentProfileViewUid&&currentProfileViewData){unattachStats(viewStatsUnsub);showScreen(profileViewScreen);setActiveRaazNav('profile');}
+        else {showScreen(profileScreen);setActiveRaazNav('profile');}
+        return;
+      }
+      if(visible(requestsScreen)){raazGoHome(lastHomeTab||'feed');return;}
+      if(visible(blockedScreen)){showScreen(profileScreen);setActiveRaazNav('profile');return;}
+      if(visible(profileViewScreen)){raazGoHome(lastHomeTab||'feed');return;}
+      if(visible(profileScreen)){raazGoHome(lastHomeTab||'feed');return;}
+      if(visible(exploreScreen)||visible(reelsScreen)||visible(groupsScreen)||visible(notesScreen)||visible(settingsScreen)){raazGoHome(lastHomeTab||'feed');return;}
+    }catch(err){console.error('RAAZ V16.4 back',err);raazGoHome(lastHomeTab||'feed');}
+  }
+  window.raazUniversalBack=goBack;
+  window.raazGoBack=goBack;
+
+  // Visible back buttons use one direct handler. No recursive .click() calls.
+  const backIds=['backBtn','profileViewBackBtn','profileBackBtn','peopleListBackBtn','requestsBackBtn','blockedBackBtn','exploreBackBtn','reelsBackBtn','groupsBackBtn','notesBackBtn','settingsBackBtn','gamesBackBtn','ludoPanelBackBtn'];
+  backIds.forEach(id=>{
+    const btn=byId(id);if(!btn)return;
+    btn.type='button';btn.setAttribute('aria-label','Back');btn.title='Back';
+    btn.addEventListener('click',e=>{e.preventDefault();e.stopImmediatePropagation();goBack();},{capture:true});
+  });
+  document.querySelectorAll('.gamePanelBackBtn').forEach(btn=>{
+    btn.type='button';btn.setAttribute('aria-label','Back');btn.title='Back';
+    btn.addEventListener('click',e=>{e.preventDefault();e.stopImmediatePropagation();closeGamePanelDirect();},{capture:true});
+  });
+
+  // Close buttons inside overlays should never navigate the page.
+  ['closeNotificationsBtn','closeStoryViewersBtn','closeStoryViewerBtn','closeCreatePostBtn','closeCreateStoryBtn','closeCreateReelBtn','closeCreateGroupBtn','closeReelCommentsBtn','closePostActionBtn','closeCreateActionBtn','closeMoreBtn','cancelReplyBtn'].forEach(id=>{
+    const btn=byId(id);if(btn){btn.type='button';}
+  });
+
+  // Build a small browser history trail for real pages. Hardware back can then follow it.
+  function currentScreenName(){
+    if(visible(chatScreen))return 'chat';
+    if(visible(profileViewScreen))return 'profileView';
+    if(visible(peopleListScreen))return 'people';
+    if(visible(requestsScreen))return 'requests';
+    if(visible(blockedScreen))return 'blocked';
+    if(visible(profileScreen))return 'profile';
+    if(visible(exploreScreen))return 'explore';
+    if(visible(reelsScreen))return 'reels';
+    if(visible(groupsScreen))return 'groups';
+    if(visible(notesScreen))return 'notes';
+    if(visible(settingsScreen))return 'settings';
+    if(visible(gamesScreen))return 'games';
+    if(visible(homeScreen))return 'home';
+    return 'home';
+  }
+  function pushPage(name){
+    try{
+      if(history.state?.raazScreen===name)return;
+      history.pushState({raazBase:true,raazScreen:name},'',location.href.split('#')[0]+'#raaz-'+name);
+    }catch(_){ }
+  }
+  window.raazPushHistory=pushPage;
+
+  // Bottom navigation: push only real page destinations.
+  document.querySelectorAll('.raazNav').forEach(btn=>btn.addEventListener('click',()=>{
+    const name=btn.dataset.raazNav;
+    if(name&&name!=='create')setTimeout(()=>pushPage(name==='feed'||name==='chats'?'home':name),0);
+  }));
+
+  // Profile views and secondary screens opened from content/settings.
+  const oldOpenProfileView=openProfileView;
+  openProfileView=async function(uid,data){pushPage('profileView');return oldOpenProfileView(uid,data);};
+  const oldOpenPeopleList=openPeopleList;
+  openPeopleList=function(uid,type){pushPage('people');return oldOpenPeopleList(uid,type);};
+  const oldOpenChat=openChat;
+  openChat=function(friendUid,friendName,friendUsername){pushPage('chat');return oldOpenChat(friendUid,friendName,friendUsername);};
+
+  // Existing more/settings/request entry points get a real history entry.
+  ['openGroupsBtn','openNotesBtn','openSettingsBtn','openBlockedFromSettings','requestsBtn'].forEach(id=>{
+    byId(id)?.addEventListener('click',()=>setTimeout(()=>{
+      const n=currentScreenName();if(n!=='home')pushPage(n);
+    },0));
+  });
+  byId('openGamesBtn')?.addEventListener('click',()=>setTimeout(()=>pushPage('games'),0));
+  byId('openGamesHomeBtn')?.addEventListener('click',()=>setTimeout(()=>pushPage('games'),0));
+
+  // Browser / Android back. We intentionally use the state we landed on, then render it directly.
+  /* legacy popstate router removed by V17.1 */
+
+  // Normalize old/misplaced profile labels and remove accidental duplicate wording.
+  const textFixes={
+    'EDIT Bio Edit Karo':'Edit Bio','EDIT Username Edit Karo':'Edit Username',
+    'POSTS My Posts':'My Posts','SAVED Saved':'Saved','Saved Save':'Save','Repost Repost':'Repost','Share Share':'Share',
+    'OK Following':'Following','OK Accept Karo':'Accept','Chat Message Karo':'Message'
+  };
+  document.querySelectorAll('button,label').forEach(el=>{let t=el.textContent;for(const[a,b]of Object.entries(textFixes))if(t.includes(a))t=t.replace(a,b);if(t!==el.textContent)el.textContent=t;});
+
+  // Prevent accidental page navigation from dragging media.
+  document.querySelectorAll('img,video').forEach(el=>el.draggable=false);
+  console.info('RAAZ V16.4 universal navigation + chat/game polish ready');
+})();
+
+/* ================= RAAZ V17 - INSTAGRAM STYLE PROFILE / NAV HARDENING ================= */
+(function installRaazV17(){
+  const $=id=>document.getElementById(id), visible=el=>!!el&&!el.classList.contains('hidden');
+  let profileUnsubs=[]; let profileContentTab='posts'; let profileUid=null; let profileIsMine=false; let profilePosts=[]; let profileReels=[];
+  const stopProfileRealtime=()=>{profileUnsubs.forEach(fn=>{try{fn&&fn()}catch(_){}});profileUnsubs=[];};
+  const fmt=n=>{n=Number(n||0);if(n<1000)return String(n);if(n<1e6)return (n/1000).toFixed(n>=10000?0:1).replace(/\.0$/,'')+'K';if(n<1e9)return (n/1e6).toFixed(n>=1e7?0:1).replace(/\.0$/,'')+'M';return (n/1e9).toFixed(1).replace(/\.0$/,'')+'B';};
+  const mediaHtml=(d,reel=false)=>{const src=reel?(d.videoUrl||d.videoBase64||''):(d.imageBase64||'');return src?(reel?`<video src="${escapeHtml(src)}" muted playsinline preload="metadata"></video>`:`<img src="${escapeHtml(src)}" alt="Post" loading="lazy">`):`<div class="profileGridPlaceholder">${escapeHtml(d.caption||d.text||'Post')}</div>`;};
+
+  function updateProfileStatsTotal(items){
+    if(!profileIsMine)return;
+    const totalViews=items.reduce((a,x)=>a+Number(x.data.viewCount||0),0);
+    const totalShares=items.reduce((a,x)=>a+Number(x.data.shareCount||0),0);
+    if($('analyticsReach'))$('analyticsReach').textContent=fmt(totalViews);
+    if($('analyticsShares'))$('analyticsShares').textContent=fmt(totalShares);
+  }
+
+  async function refreshAnalytics(){
+    if(!profileIsMine||!profileUid)return;
+    try{
+      const [ps,rs]=await Promise.all([
+        db.collection('posts').where('uid','==',profileUid).limit(100).get(),
+        db.collection('reels').where('uid','==',profileUid).limit(100).get()
+      ]);
+      let likes=0,comments=0,views=0,shares=0;
+      const all=[...ps.docs,...rs.docs];
+      await Promise.all(all.map(async doc=>{
+        const c=doc.ref.collection;
+        const [ls,cs]=await Promise.all([c('likes').get(),c('comments').get()]);
+        likes+=ls.size;comments+=cs.size;views+=Number(doc.data().viewCount||0);shares+=Number(doc.data().shareCount||0);
+      }));
+      $('analyticsReach').textContent=fmt(views);$('analyticsLikes').textContent=fmt(likes);$('analyticsComments').textContent=fmt(comments);$('analyticsShares').textContent=fmt(shares);
+      $('myPostsCount').textContent=String(ps.size+rs.size);
+    }catch(e){showRaazToast?.(e.message||'Analytics load nahi hui','error');}
+  }
+
+  function attachContentStats(doc, card, type){
+    const likes=doc.ref.collection('likes').onSnapshot(s=>{const el=card.querySelector('.gridLikes');if(el)el.textContent=`L ${fmt(s.size)}`; if(profileIsMine) refreshAnalytics();});
+    const comments=doc.ref.collection('comments').onSnapshot(s=>{const el=card.querySelector('.gridComments');if(el)el.textContent=`C ${fmt(s.size)}`; if(profileIsMine) refreshAnalytics();});
+    profileUnsubs.push(likes,comments);
+  }
+
+  function renderProfileGrid(){
+    const grid=$('myProfileGrid')||$('viewProfileGrid'), empty=$('myProfileEmpty')||$('viewProfileEmpty');
+    if(!grid||!empty)return;
+    const items=profileContentTab==='reels'?profileReels:profilePosts;
+    grid.innerHTML=''; empty.classList.toggle('hidden',items.length>0); empty.textContent=profileContentTab==='reels'?'No reels yet.':'No posts yet.';
+    items.forEach((item)=>{
+      const d=item.data, isReel=profileContentTab==='reels', c=document.createElement('button'); c.type='button'; c.className='profileGridItem'; c.dataset.contentId=item.id;
+      c.innerHTML=`${mediaHtml(d,isReel)}<div class="profileGridMeta"><span class="gridLikes">L 0</span><span class="gridComments">C 0</span>${profileIsMine?`<span>Views ${fmt(d.viewCount||0)}</span>`:''}</div>`;
+      c.addEventListener('click',()=>{
+        if(isReel){raazGoFeature?.(reelsScreen,'reels');setTimeout(()=>document.querySelector(`[data-reel-id="${CSS.escape(item.id)}"]`)?.scrollIntoView({behavior:'smooth',block:'center'}),120);}
+        else{raazGoHome?.('feed');setTimeout(()=>document.querySelector(`[data-post-id="${CSS.escape(item.id)}"]`)?.scrollIntoView({behavior:'smooth',block:'center'}),120);}
+      });
+      grid.appendChild(c); attachContentStats({ref:isReel?db.collection('reels').doc(item.id):db.collection('posts').doc(item.id)},c,isReel?'reel':'post');
+    });
+    if(profileIsMine)updateProfileStatsTotal(items);
+  }
+
+  async function loadProfileContent(uid){
+    stopProfileRealtime();
+    const postQ=db.collection('posts').where('uid','==',uid).limit(100);
+    const reelQ=db.collection('reels').where('uid','==',uid).limit(100);
+    let postInit=true,reelInit=true;
+    const onData=(snap,isReel)=>{
+      const arr=snap.docs.map(d=>({id:d.id,data:d.data()})).sort((a,b)=>(b.data.createdAt?.toMillis?.()||0)-(a.data.createdAt?.toMillis?.()||0));
+      if(isReel)profileReels=arr;else profilePosts=arr;
+      const postsCount=$('viewPostsCount'); if(postsCount)postsCount.textContent=String(profilePosts.length+profileReels.length);
+      const myPosts=$('myPostsCount');if(myPosts)myPosts.textContent=String(profilePosts.length+profileReels.length);
+      renderProfileGrid();
+      if(profileIsMine && !isReel && postInit){ postInit=false; refreshAnalytics(); } if(profileIsMine && isReel && reelInit){ reelInit=false; refreshAnalytics(); }
+    };
+    profileUnsubs.push(postQ.onSnapshot(s=>onData(s,false),e=>showRaazToast?.(e.message||'Posts load nahi hui','error')));
+    profileUnsubs.push(reelQ.onSnapshot(s=>onData(s,true),e=>showRaazToast?.(e.message||'Reels load nahi hui','error')));
+  }
+
+  function setTab(tab){profileContentTab=tab;document.querySelectorAll('.profileProTab').forEach(b=>b.classList.toggle('active',b.dataset.profileTab===tab));renderProfileGrid();}
+
+  async function openMine(){
+    const u=auth.currentUser;if(!u)return;
+    profileUid=u.uid;profileIsMine=true;profileContentTab='posts';
+    const snap=await db.collection('users').doc(u.uid).get(); const d=snap.exists?snap.data():{name:u.displayName||u.email?.split('@')[0]||'RAAZ',username:currentUsername};
+    $('profileName').textContent=d.name||currentUserName||'RAAZ';$('profileUsername').textContent='@'+(d.username||currentUsername);$('bioDisplay').textContent=d.bio||'Bio nahi likha hai abhi';$('profileEmail').textContent=u.email||'';
+    const a=$('profileAvatar');a.textContent=(d.name||'R').charAt(0).toUpperCase();a.style.backgroundImage=d.photoBase64?`url(${d.photoBase64})`:'none';
+    attachFollowStats(u.uid,$('myFollowersCount'),$('myFollowingCount'),myStatsUnsub); await loadProfileContent(u.uid); refreshAnalytics(); showScreen(profileScreen); showRaazBottomNav(true);setActiveRaazNav('profile');
+  }
+
+  async function openOther(uid,data){
+    if(!auth.currentUser)return;
+    if(uid===auth.currentUser.uid){return openMine();}
+    profileUid=uid;profileIsMine=false;profileContentTab='posts'; currentProfileViewUid=uid;currentProfileViewData=data;
+    $('viewName').textContent=data.name||'RAAZ User';$('viewUsername').textContent='@'+(data.username||'user');$('viewBio').textContent=data.bio||'Bio nahi likha hai abhi';
+    const a=$('viewAvatar');a.textContent=(data.name||'R').charAt(0).toUpperCase();a.style.backgroundImage=data.photoBase64?`url(${data.photoBase64})`:'none';
+    $('followBtnArea').innerHTML=''; $('viewActionArea').innerHTML='';
+    showScreen(profileViewScreen);showRaazBottomNav(false);setActiveRaazNav('profile');
+    attachFollowStats(uid,$('viewFollowersCount'),$('viewFollowingCount'),viewStatsUnsub); await loadProfileContent(uid); await renderFollowButton(uid,data);
+    $('viewPostsCount').textContent=String(profilePosts.length+profileReels.length);
+  }
+
+  // Replace the old profile renderer with the professional profile.
+  profileBtn.addEventListener('click',()=>{openMine().catch(e=>showRaazToast?.(e.message||'Profile load nahi hui','error'));});
+  openProfileView=async function(uid,data){ try{ const fresh=await db.collection('users').doc(uid).get(); return openOther(uid,fresh.exists?fresh.data():data||{}); }catch(e){ return openOther(uid,data||{}); } };
+  window.openProfileView=openProfileView;
+
+  document.querySelectorAll('.profileProTab').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.profileTab||'posts')));
+  $('myFollowersStat')?.addEventListener('click',()=>openPeopleList(auth.currentUser.uid,'followers'));
+  $('myFollowingStat')?.addEventListener('click',()=>openPeopleList(auth.currentUser.uid,'following'));
+  $('myPostsStat')?.addEventListener('click',()=>setTab('posts'));
+  $('viewPostsStat')?.addEventListener('click',()=>setTab('posts'));
+  $('profileRefreshAnalytics')?.addEventListener('click',refreshAnalytics);
+  $('profileSettingsTopBtn')?.addEventListener('click',()=>openRaazSettings());
+  $('profileEditActionBtn')?.addEventListener('click',()=>{const p=$('profileEditPanel');p?.classList.toggle('hidden');if(!p?.classList.contains('hidden')){$('newBioInput').value=currentBio||'';$('newUsernameInput').value=currentUsername||'';}});
+  $('cancelBioBtn')?.addEventListener('click',()=>{$('profileEditPanel')?.classList.add('hidden');});
+  $('profileShareBtn')?.addEventListener('click',async()=>{const u=profileUid||auth.currentUser?.uid;if(!u)return;const url=`${location.href.split('#')[0]}#profile-${u}`;try{if(navigator.share)await navigator.share({title:'RAAZ Profile',text:'RAAZ profile dekho',url});else await navigator.clipboard.writeText(url);showRaazToast?.('Profile link ready hai','success');}catch(e){if(e?.name!=='AbortError')showRaazToast?.(e.message||'Share fail','error');}});
+
+  // Never allow self-follow, even when an old/cached UI is rendered.
+  const originalFollow=followUser;
+  followUser=async function(targetUid,targetName,targetUsername){if(!auth.currentUser||targetUid===auth.currentUser.uid){showRaazToast?.('Khud ko follow nahi kar sakte.','error');return false;}return originalFollow(targetUid,targetName,targetUsername);};
+  window.followUser=followUser;
+  const originalRenderFollow=renderFollowButton;
+  renderFollowButton=async function(uid,data){if(uid===auth.currentUser?.uid){followBtnArea.innerHTML='';return;}return originalRenderFollow(uid,data);};
+
+  // Add view/share counters without changing the existing feed UI.
+  const viewed=new Set();
+  function observeContentViews(){
+    if(!window.IntersectionObserver)return;
+    document.querySelectorAll('.postCard[data-post-id],.reelCard[data-reel-id]').forEach(el=>{
+      if(el.dataset.raazViewedBound)return;el.dataset.raazViewedBound='1';
+      const io=new IntersectionObserver(es=>es.forEach(e=>{if(!e.isIntersecting||e.intersectionRatio<.6)return;const id=el.dataset.postId||el.dataset.reelId;const key=(el.dataset.postId?'post:':'reel:')+id;if(viewed.has(key))return;viewed.add(key);const col=el.dataset.postId?'posts':'reels';db.collection(col).doc(id).update({viewCount:firebase.firestore.FieldValue.increment(1)}).catch(()=>{});io.unobserve(el);} ),{threshold:[.6]});io.observe(el);
+    });
+  }
+  const oldRenderFeed=renderFeedFromCache;renderFeedFromCache=function(){const r=oldRenderFeed.apply(this,arguments);setTimeout(observeContentViews,250);return r;};window.renderFeedFromCache=renderFeedFromCache;
+  const oldShare=sharePost;sharePost=async function(postId,data){const r=await oldShare(postId,data);const col=data?.videoUrl||data?.videoBase64?'reels':'posts';db.collection(col).doc(postId).update({shareCount:firebase.firestore.FieldValue.increment(1)}).catch(()=>{});return r;};window.sharePost=sharePost;
+  setInterval(()=>{ if(document.querySelector('.reelCard[data-reel-id]')) observeContentViews(); },1200);
+
+  // Make every person row/profile identity clickable; self remains a normal profile without follow.
+  document.addEventListener('click',e=>{
+    const row=e.target.closest('.chatListItem,.exploreUser,.postIdentity,.reelOverlay');
+    if(!row || row.closest('#chatListPrimary,#chatListSecondary')) return;
+    if(e.target.closest('button:not(.postIdentity)')) return;
+    const uid=row.dataset.uid||row.querySelector('[data-avatar-uid]')?.dataset.avatarUid||row.closest('[data-uid]')?.dataset.uid;if(!uid)return;
+    db.collection('users').doc(uid).get().then(s=>{if(s.exists)openProfileView(uid,s.data());}).catch(()=>{});
+  },true);
+
+  // Replace all legacy back-button handlers with one deterministic handler.
+  const backIds=['backBtn','profileViewBackBtn','profileBackBtn','requestsBackBtn','blockedBackBtn','peopleListBackBtn','exploreBackBtn','reelsBackBtn','groupsBackBtn','notesBackBtn','settingsBackBtn','gamesBackBtn','ludoPanelBackBtn'];
+  backIds.forEach(id=>{const old=$(id);if(!old)return;const b=old.cloneNode(true);old.replaceWith(b);b.type='button';b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();deterministicBack();});});
+  function deterministicBack(){
+    const overlays=['storyViewersOverlay','storyViewerOverlay','reelCommentsOverlay','createPostOverlay','createStoryOverlay','createReelOverlay','createGroupOverlay','notificationsOverlay','postActionOverlay','chatItemMenuOverlay','createActionOverlay','raazMoreOverlay'];
+    for(const id of overlays){const x=$(id);if(visible(x)){x.classList.add('hidden');document.body.classList.remove('overlayOpen');return;}}
+    if(visible(gamesScreen)){if(visible(ludoPanel)||visible(game2048Panel)||visible(rushPanel)){document.querySelector('.gamePanel:not(.hidden) .gamePanelBackBtn')?.click();return;}raazGoHome(lastHomeTab||'feed');return;}
+    if(visible(chatScreen)){try{unsubscribeMessages?.();unsubscribeFriendStatus?.();unsubscribeChatDoc?.();}catch(_){}currentChatId=null;currentFriendUid=null;raazGoHome(lastHomeTab||'feed');return;}
+    if(visible(peopleListScreen)){if(currentProfileViewUid){openProfileView(currentProfileViewUid,currentProfileViewData);return;}openMine();return;}
+    if(visible(blockedScreen)){openMine();return;}
+    if(visible(profileViewScreen)||visible(profileScreen)||visible(requestsScreen)||visible(exploreScreen)||visible(reelsScreen)||visible(groupsScreen)||visible(notesScreen)||visible(settingsScreen)){raazGoHome(lastHomeTab||'feed');return;}
+  }
+  window.raazGoBack=deterministicBack;window.raazUniversalBack=deterministicBack;
+  /* legacy popstate router removed by V17.1 */
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();deterministicBack();}},true);
+
+  // Initial profile hash support and PWA-safe cache bust.
+  const link=document.querySelector('link[rel="stylesheet"]');if(link)link.href='style.css?v=17.1.0';
+  console.info('RAAZ V17 profile + analytics + navigation hardening ready');
+})();
+
+
+/* ================= RAAZ V17.1 - SINGLE NAVIGATION ROUTER ================= */
+(function(){
+  const screens=[authScreen,homeScreen,chatScreen,profileScreen,profileViewScreen,requestsScreen,blockedScreen,peopleListScreen,document.getElementById('exploreScreen'),document.getElementById('reelsScreen'),document.getElementById('groupsScreen'),document.getElementById('notesScreen'),document.getElementById('settingsScreen'),document.getElementById('gamesScreen')].filter(Boolean);
+  const names=['auth','home','chat','profile','profileView','requests','blocked','people','explore','reels','groups','notes','settings','games'];
+  const keyFor=new Map(screens.map((e,i)=>[e,names[i]]));
+  const elFor=Object.fromEntries(screens.map((e,i)=>[names[i],e]));
+  const overlays=['storyViewersOverlay','storyViewerOverlay','reelCommentsOverlay','createPostOverlay','createStoryOverlay','createReelOverlay','createGroupOverlay','notificationsOverlay','postActionOverlay','chatItemMenuOverlay','createActionOverlay','raazMoreOverlay','messageReactionPicker'];
+  const visible=e=>!!e&&!e.classList.contains('hidden');
+  let restoring=false;
+  const current=()=>{for(const e of screens)if(visible(e))return keyFor.get(e)||'home';return 'home'};
+  const closeOverlay=()=>{for(const id of overlays){const e=document.getElementById(id);if(visible(e)){e.classList.add('hidden');document.body.classList.remove('overlayOpen');return true}}return false};
+  const originalShow=showScreen;
+  function show(e){restoring=true;try{originalShow(e)}finally{setTimeout(()=>restoring=false,0)}}
+  showScreen=function(e){const k=keyFor.get(e)||'home';if(!restoring&&auth.currentUser&&k!=='auth'&&current()!==k){try{history.pushState({raazV171:true,raazScreen:k},'',location.href.split('#')[0]+'#raaz-'+k)}catch(_){}}originalShow(e)};
+  window.raazPushHistory=()=>{};
+  function renderKey(k){
+    restoring=true;
+    try{
+      if(k==='home')return originalShow(homeScreen);
+      if(k==='profile'){ if(typeof openMyProfileV15==='function')return openMyProfileV15(); }
+      if(k==='profileView'){ if(currentProfileViewUid&&typeof openProfileView==='function')return openProfileView(currentProfileViewUid,currentProfileViewData||{}); return originalShow(homeScreen); }
+      if(k==='people')return originalShow(peopleListScreen);
+      if(k==='requests'){loadRequestsScreen?.();return originalShow(requestsScreen)}
+      if(k==='blocked'){loadBlockedScreen?.();return originalShow(blockedScreen)}
+      if(k==='explore'){raazGoFeature(exploreScreen,'explore');renderExplore?.('');return}
+      if(k==='reels'){raazGoFeature(reelsScreen,'reels');listenForReels?.();return}
+      if(k==='groups'){raazGoFeature(groupsScreen,'more');listenForGroups?.();return}
+      if(k==='notes'){raazGoFeature(notesScreen,'more');listenForNotes?.();return}
+      if(k==='settings'){raazGoFeature(settingsScreen,'more');loadRaazSettings?.();return}
+      if(k==='games'){openGames?.();return}
+    }finally{setTimeout(()=>restoring=false,0)}
+  }
+  if(!history.state?.raazV171){try{history.replaceState({raazV171:true,raazScreen:current()},'',location.href.split('#')[0]+'#raaz-'+current())}catch(_){}}
+  function goBack(){
+    if(closeOverlay())return;
+    const lp=document.getElementById('ludoPanel'),p2=document.getElementById('game2048Panel'),st=document.getElementById('rushPanel'),g=document.getElementById('gamesScreen');
+    if(visible(g)&&(visible(lp)||visible(p2)||visible(st))){lp?.classList.add('hidden');p2?.classList.add('hidden');st?.classList.add('hidden');document.getElementById('gameCards')?.classList.remove('hidden');return}
+    if(history.state?.raazV171&&history.state.raazScreen!=='home'){try{history.back();return}catch(_){}}
+    if(current()==='home')return;
+    renderKey('home');
+  }
+  window.raazGoBack=goBack;window.raazUniversalBack=goBack;
+  const ids=['backBtn','profileViewBackBtn','profileBackBtn','requestsBackBtn','blockedBackBtn','peopleListBackBtn','exploreBackBtn','reelsBackBtn','groupsBackBtn','notesBackBtn','settingsBackBtn','gamesBackBtn','ludoPanelBackBtn'];
+  ids.forEach(id=>{const old=document.getElementById(id);if(!old)return;const b=old.cloneNode(true);old.replaceWith(b);b.type='button';b.setAttribute('aria-label','Back');b.title='Back';b.addEventListener('click',e=>{e.preventDefault();e.stopImmediatePropagation();goBack()},{capture:true})});
+  window.addEventListener('popstate',e=>{e.stopImmediatePropagation();if(closeOverlay())return;renderKey(e.state?.raazV171?e.state.raazScreen:'home')},{capture:true});
+  // Every identifiable user surface can open its profile.
+  document.addEventListener('click',e=>{const t=e.target.closest('[data-profile-uid]');if(!t)return;const uid=t.dataset.profileUid;if(!uid||t.closest('button:not([data-profile-uid])'))return;e.preventDefault();e.stopPropagation();db.collection('users').doc(uid).get().then(s=>{if(s.exists)openProfileView(uid,s.data())}).catch(err=>showRaazToast?.(err.message||'Profile load nahi hui','error'))},{capture:true});
+  const oldFollow=followUser;followUser=async function(uid,name,username){if(!auth.currentUser||uid===auth.currentUser.uid){showRaazToast?.('Khud ko follow nahi kar sakte.','error');return false}return oldFollow(uid,name,username)};window.followUser=followUser;
+  console.info('RAAZ V17.1 single navigation router ready');
 })();

@@ -1,0 +1,36 @@
+RAAZ V17 FIRESTORE RULE ADDITIONS
+
+MERGE ONLY. Do not replace the complete existing rules blindly.
+Keep the existing rules_version and catch-all deny structure.
+
+1) POST ANALYTICS COUNTERS
+Inside match /posts/{postId}, keep owner updates and also allow a signed-in user to increment viewCount OR shareCount by exactly 1:
+
+allow update: if signedIn() && (
+  resource.data.uid == request.auth.uid ||
+  (
+    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount']) &&
+    request.resource.data.get('viewCount', 0) == resource.data.get('viewCount', 0) + 1
+  ) ||
+  (
+    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['shareCount']) &&
+    request.resource.data.get('shareCount', 0) == resource.data.get('shareCount', 0) + 1
+  )
+);
+
+2) REEL ANALYTICS COUNTERS
+Inside match /reels/{reelId}, use the same pattern for viewCount/shareCount increments:
+
+allow update: if signedIn() && (
+  resource.data.uid == request.auth.uid ||
+  (
+    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount']) &&
+    request.resource.data.get('viewCount', 0) == resource.data.get('viewCount', 0) + 1
+  ) ||
+  (
+    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['shareCount']) &&
+    request.resource.data.get('shareCount', 0) == resource.data.get('shareCount', 0) + 1
+  )
+);
+
+If the current rules already contain an allow update line for posts/reels, merge these conditions into that line rather than creating conflicting logic.
