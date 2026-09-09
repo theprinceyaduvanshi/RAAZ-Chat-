@@ -721,13 +721,27 @@ async function addPostComment(postId, card) {
 }
 
 async function sharePost(postId, data) {
-  const shareText = `@${data.username || "user"} ne RAAZ par ek post share ki hai${data.caption ? `: ${data.caption}` : ""}`;
+  const shareText = `@${data.username || 'user'} ne RAAZ par ek post share ki hai${data.caption ? `: ${data.caption}` : ''}`;
+  let shared = false;
   if (navigator.share) {
-    try { await navigator.share({ title: "RAAZ Post", text: shareText, url: `${location.href.split("#")[0]}#post-${postId}` }); return; }
-    catch (err) { if (err?.name === "AbortError") return; }
+    try {
+      await navigator.share({ title: 'RAAZ Post', text: shareText, url: `${location.href.split('#')[0]}#post-${postId}` });
+      shared = true;
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+    }
+  } else {
+    try { await navigator.clipboard.writeText(`${shareText} ${location.href.split('#')[0]}#post-${postId}`); shared = true; }
+    catch (_) { alert(shareText); return; }
   }
-  try { await navigator.clipboard.writeText(shareText); alert("Post details copy ho gayi."); }
-  catch (_) { alert(shareText); }
+  if (shared && auth.currentUser) {
+    try {
+      const ref = db.collection('posts').doc(postId);
+      const snap = await ref.get();
+      const current = Number(snap.data()?.shareCount || 0);
+      await ref.update({ shareCount: current + 1 });
+    } catch (e) { console.warn('Post share counter', e); }
+  }
 }
 
 async function createNotification(targetUid, data) {
@@ -1495,11 +1509,14 @@ async function acceptRequest(fromUid, fromName, fromUsername) {
   const chatId = getChatId(myUid, fromUid);
   const batch = db.batch();
   const now = firebase.firestore.FieldValue.serverTimestamp();
+  // V23: chatsList is the private connection record. The shared chat parent
+  // is optional metadata and must never be part of request acceptance, because
+  // its rules cannot safely depend on documents being created in the same batch.
   batch.delete(db.collection("users").doc(myUid).collection("requestsReceived").doc(fromUid));
   batch.delete(db.collection("users").doc(fromUid).collection("requestsSent").doc(myUid));
   batch.set(db.collection("users").doc(myUid).collection("chatsList").doc(chatId), {
     friendUid: fromUid, friendName: fromName, friendUsername: fromUsername,
-    lastMessage: "", lastMessageTime: now, lastSenderUid: null, category: "primary", unreadCount: 0, myLastRead: now, unreadCount: 0
+    lastMessage: "", lastMessageTime: now, lastSenderUid: null, category: "primary", unreadCount: 0, myLastRead: now
   }, { merge: true });
   batch.set(db.collection("users").doc(fromUid).collection("chatsList").doc(chatId), {
     friendUid: myUid, friendName: currentUserName, friendUsername: currentUsername,
@@ -1746,26 +1763,57 @@ deleteChatBtn.addEventListener("click", async () => {
 });
 
 // ================= OPEN A CHAT =================
-function openChat(friendUid, friendName, friendUsername) {
+async function openChat(friendUid, friendName, friendUsername) {
+  if (!auth.currentUser || !friendUid || friendUid === auth.currentUser.uid) return;
+
+  // Stop previous chat listeners before switching conversations.
+  try { unsubscribeMessages?.(); unsubscribeFriendStatus?.(); unsubscribeChatDoc?.(); } catch (_) {}
+  if (statusRefreshInterval) clearInterval(statusRefreshInterval);
+  clearTimeout(typingTimeout);
+  if (typeof window.raazCloseReactionPicker === 'function') window.raazCloseReactionPicker();
+
   currentChatId = getChatId(auth.currentUser.uid, friendUid);
   currentFriendUid = friendUid;
-  friendNameDisplay.textContent = friendName + " (@" + friendUsername + ")";
+  friendNameDisplay.textContent = `${friendName || 'User'} (@${friendUsername || 'user'})`;
 
-  chatHeaderAvatar.setAttribute("data-avatar-uid", friendUid);
-  chatHeaderAvatar.setAttribute("data-fallback-letter", friendName);
-  chatHeaderAvatar.textContent = friendName.charAt(0).toUpperCase();
-  chatHeaderAvatar.style.backgroundImage = "none";
+  chatHeaderAvatar.setAttribute('data-avatar-uid', friendUid);
+  chatHeaderAvatar.setAttribute('data-fallback-letter', friendName || 'User');
+  chatHeaderAvatar.textContent = (friendName || 'U').charAt(0).toUpperCase();
+  chatHeaderAvatar.style.backgroundImage = 'none';
   watchFriendAvatar(friendUid);
 
+  cachedMessages = [];
+  chatDocData = {};
+  messagesDiv.innerHTML = '<div class="chatListEmpty chatLoadingState">Chat load ho rahi hai...</div>';
   showScreen(chatScreen);
 
   const myUid = auth.currentUser.uid;
 
-  markCurrentChatRead(true);
+  try {
+    // A chat is valid only when it is present in the caller's private chat list.
+    // This also repairs older chats that never received the parent document.
+    const chatListRef = db.collection('users').doc(myUid).collection('chatsList').doc(currentChatId);
+    const chatListSnap = await chatListRef.get();
+    if (!chatListSnap.exists) {
+      throw new Error('Ye chat ab available nahi hai. Pehle message request accept hone dein.');
+    }
 
-  listenForChatDoc();
-  listenForMessages();
-  listenForFriendStatus(friendUid);
+    // V23: never make the shared chat document a prerequisite for opening a chat.
+    // Private chatsList membership is the authorization anchor for this UI.
+    await markCurrentChatRead(true).catch(()=>{});
+    listenForMessages();
+    listenForFriendStatus(friendUid);
+  } catch (err) {
+    console.error('RAAZ chat setup', err);
+    try { unsubscribeMessages?.(); unsubscribeFriendStatus?.(); unsubscribeChatDoc?.(); } catch (_) {}
+    const code = err?.code || '';
+    const message = code === 'permission-denied'
+      ? 'Is chat ke liye access nahi mila. Firebase Rules publish karke page refresh karo.'
+      : (err?.message || 'Firebase access error');
+    messagesDiv.innerHTML = `<div class="chatListEmpty chatErrorState">Chat load nahi ho pa rahi.<br><small>${escapeHtml(message)}</small><button type="button" class="chatRetryBtn" id="chatRetryBtn">Try again</button></div>`;
+    document.getElementById('chatRetryBtn')?.addEventListener('click', () => openChat(friendUid, friendName, friendUsername), { once: true });
+    showRaazToast?.(message, 'error');
+  }
 }
 
 // ================= SEEN TICKS + TYPING (chat-level doc) =================
@@ -1774,10 +1822,9 @@ async function markCurrentChatRead(markNotifications=false){
   readMarkInFlight=true;
   const myUid=auth.currentUser.uid, now=firebase.firestore.FieldValue.serverTimestamp();
   try{
-    const batch=db.batch();
-    batch.set(db.collection("users").doc(myUid).collection("chatsList").doc(currentChatId),{myLastRead:now,unreadCount:0},{merge:true});
-    batch.set(db.collection("chats").doc(currentChatId),{[`lastRead_${myUid}`]:now},{merge:true});
-    await batch.commit();
+    // Read receipts are non-critical metadata. Never write the shared chat
+    // parent here; messages must remain independent of metadata permissions.
+    await db.collection("users").doc(myUid).collection("chatsList").doc(currentChatId).set({myLastRead:now,unreadCount:0},{merge:true});
     if(markNotifications){
       try{
         const snap=await db.collection("users").doc(myUid).collection("notifications").where("read","==",false).limit(100).get();
@@ -1797,7 +1844,7 @@ function listenForChatDoc() {
     chatDocData = doc.data() || {};
     renderMessagesList();
     updateTypingDisplay();
-  });
+  }, (err) => { console.warn("Chat metadata listener skipped", err); });
 }
 
 function updateTypingDisplay() {
@@ -1885,7 +1932,9 @@ msgInput.addEventListener("input", () => {
   const myUid = auth.currentUser.uid;
   if(!typingWritePending){
     typingWritePending=true;
-    db.collection("chats").doc(currentChatId).set({[`typing_${myUid}`]:true},{merge:true}).finally(()=>{typingWritePending=false;});
+    db.collection("chats").doc(currentChatId).set({[`typing_${myUid}`]:true},{merge:true})
+      .catch(()=>{})
+      .finally(()=>{typingWritePending=false;});
   }
   clearTimeout(typingTimeout);
   typingTimeout=setTimeout(clearTypingStatus,2200);
@@ -2133,17 +2182,23 @@ async function renderExplore(term){
   try{
     let html="";
     if(activeExploreFilter!=="posts" && activeExploreFilter!=="hashtags"){
-      const snap=await db.collection("users").orderBy("username").limit(100).get();
-      const users=snap.docs.map(d=>({uid:d.id,...d.data()})).filter(u=>!q || (u.username||"").toLowerCase().includes(q)||(u.name||"").toLowerCase().includes(q));
+      let snap;
+      try { snap=await db.collection("users").orderBy("username").limit(100).get(); }
+      catch(_) { snap=await db.collection("users").limit(100).get(); }
+      const users=snap.docs.map(d=>({uid:d.id,...d.data()})).sort((a,b)=>String(a.username||"").localeCompare(String(b.username||""))).filter(u=>!q || (u.username||"").toLowerCase().includes(q)||(u.name||"").toLowerCase().includes(q));
       users.slice(0,30).forEach(u=>{ const av=u.photoBase64?`style="background-image:url(${u.photoBase64})"`:""; html+=`<div class="exploreUser"><div class="exploreAvatar" ${av}>${u.photoBase64?"":escapeHtml((u.name||"R")[0])}</div><div class="exploreUserInfo"><strong>${escapeHtml(u.name||"User")}</strong><small>@${escapeHtml(u.username||"user")}</small></div><button class="exploreOpen" data-uid="${u.uid}">Open</button></div>`; });
     }
     if(activeExploreFilter!=="people"){
-      const posts=feedCache.filter(p=>{const d=p.data||{};return !q || (d.caption||"").toLowerCase().includes(q) || (d.username||"").toLowerCase().includes(q);});
-      posts.slice(0,20).forEach(p=>{html+=`<button class="groupCard explorePostJump" data-post-id="${p.id}"><div class="groupIcon">Posts</div><div><strong>@${escapeHtml(p.data.username||"user")}</strong><small>${escapeHtml((p.data.caption||"Post").slice(0,100))}</small></div><span>></span></button>`;});
-    }
-    if(activeExploreFilter==="hashtags" || q.startsWith("#")){
-      const tags=new Set(); feedCache.forEach(p=>{(p.data.caption||"").match(/#[\p{L}\p{N}_]+/gu)?.forEach(t=>tags.add(t.toLowerCase()));});
-      html += [...tags].filter(t=>!q||t.includes(q.replace(/^#/,""))).slice(0,30).map(t=>`<button class="groupCard hashtagJump"><div class="groupIcon">#</div><div><strong>${escapeHtml(t)}</strong><small>Explore hashtag</small></div><span>></span></button>`).join("");
+      let postSnap;
+      try { postSnap=await db.collection("posts").orderBy("createdAt","desc").limit(50).get(); }
+      catch(_) { postSnap=await db.collection("posts").limit(50).get(); }
+      const posts=postSnap.docs.map(d=>({id:d.id,data:d.data()||{}})).sort((a,b)=>(b.data.createdAt?.toMillis?.()||0)-(a.data.createdAt?.toMillis?.()||0));
+      const matching=posts.filter(p=>{const d=p.data;return !q || (d.caption||"").toLowerCase().includes(q) || (d.username||"").toLowerCase().includes(q);});
+      matching.slice(0,20).forEach(p=>{html+=`<button class="groupCard explorePostJump" data-post-id="${p.id}"><div class="groupIcon">Posts</div><div><strong>@${escapeHtml(p.data.username||"user")}</strong><small>${escapeHtml((p.data.caption||"Post").slice(0,100))}</small></div><span>></span></button>`;});
+      if(activeExploreFilter==="hashtags" || q.startsWith("#")){
+        const tags=new Set(); posts.forEach(p=>{(p.data.caption||"").match(/#[\p{L}\p{N}_]+/gu)?.forEach(t=>tags.add(t.toLowerCase()));});
+        html += [...tags].filter(t=>!q||t.includes(q.replace(/^#/,""))).slice(0,30).map(t=>`<button class="groupCard hashtagJump"><div class="groupIcon">#</div><div><strong>${escapeHtml(t)}</strong><small>Explore hashtag</small></div><span>></span></button>`).join("");
+      }
     }
     exploreResults.innerHTML=html||`<div class="featureEmpty"><div>Search</div><h3>Kuch nahi mila</h3><p>Search term change karke try karo.</p></div>`;
     exploreResults.querySelectorAll(".exploreOpen").forEach(b=>b.addEventListener("click",async()=>{const d=await db.collection("users").doc(b.dataset.uid).get();if(d.exists)openProfileView(b.dataset.uid,d.data());}));
@@ -2159,9 +2214,9 @@ function listenForReels(){
   if(unsubscribeReels) unsubscribeReels();
   if(!reelsList) return;
   reelsList.innerHTML="<div class='featureEmpty'>Reels load ho rahi hain...</div>";
-  unsubscribeReels=db.collection("reels").orderBy("createdAt","desc").limit(30).onSnapshot(async (snap)=>{
+  const renderSnap = async (snap) => {
     reelsList.innerHTML="";
-    document.getElementById("reelsEmpty")?.classList.toggle("hidden",!snap.empty);
+    document.getElementById("reelsEmpty")?.classList.add("hidden");
     for(const doc of snap.docs){
       const d=doc.data();
       const c=document.createElement("article");
@@ -2183,9 +2238,19 @@ function listenForReels(){
       hydrateReelCounts(doc.id,c);
     }
     setupReelAutoplay();
-  },e=>{
-    reelsList.innerHTML=`<div class="featureEmpty"><h3>Reels unavailable</h3><p>${escapeHtml(e.code||e.message||"Firestore error")}</p></div>`;
-  });
+  };
+  try {
+    unsubscribeReels=db.collection("reels").limit(50).onSnapshot(snap=>{
+      const docs=snap.docs.slice().sort((a,b)=>{const ta=a.data().createdAt?.toMillis?.()||0,tb=b.data().createdAt?.toMillis?.()||0;return tb-ta;});
+      renderSnap({empty:docs.length===0,docs});
+    },e=>{
+      console.error("RAAZ reels listener",e);
+      reelsList.innerHTML=`<div class="featureEmpty"><h3>Reels unavailable</h3><p>${escapeHtml(e.code||e.message||"Reels load nahi hui")}</p><button type="button" class="primaryAction" id="retryReelsV23">Try again</button></div>`;
+      document.getElementById("retryReelsV23")?.addEventListener("click",()=>listenForReels(),{once:true});
+    });
+  } catch(e) {
+    reelsList.innerHTML=`<div class="featureEmpty"><h3>Reels unavailable</h3><p>${escapeHtml(e.code||e.message||"Reels load nahi hui")}</p></div>`;
+  }
 }
 
 async function hydrateReelCounts(id,c){
@@ -2604,6 +2669,10 @@ document.querySelector('[data-raaz-nav="feed"]')?.addEventListener("click",()=>{
   // -------- Profile: direct navigation, hidden legacy button par dependency nahi --------
   function openMyProfileV15(){
     if (!auth.currentUser) return;
+    // V24 canonical profile: use the professional realtime profile implementation.
+    if (typeof window.raazOpenMine === "function") {
+      return window.raazOpenMine();
+    }
     try {
       renderProfileAvatar();
       profileName.textContent = currentUserName || "RAAZ User";
@@ -2918,8 +2987,8 @@ document.querySelector('[data-raaz-nav="feed"]')?.addEventListener("click",()=>{
         setTimeout(()=>target?.classList.remove('messageFlash'),900);
       });
       el.querySelectorAll('.reactionPill').forEach(btn=>btn.addEventListener('click',e=>{
+        // Reaction picker is intentionally opened ONLY by double-tapping the message.
         e.stopPropagation();
-        openReactionPicker(msg.id,el);
       }));
       messagesDiv.appendChild(el);
     });
@@ -2934,15 +3003,30 @@ document.querySelector('[data-raaz-nav="feed"]')?.addEventListener("click",()=>{
   // The existing renderer is intentionally replaced after the original app is loaded.
   renderMessagesList=renderMessagesListV16;
 
-  function openReactionPicker(messageId,el){
-    reactionTargetId=messageId;
+  let reactionPickerTimer=null;
+  function closeReactionPicker(){
     const picker=$('messageReactionPicker');
-    if(!picker) return;
+    if(picker) picker.classList.add('hidden');
+    reactionTargetId=null;
+    if(reactionPickerTimer) clearTimeout(reactionPickerTimer);
+    reactionPickerTimer=null;
+  }
+  window.raazCloseReactionPicker=closeReactionPicker;
+  function openReactionPicker(messageId,el){
+    const picker=$('messageReactionPicker');
+    if(!picker || !messageId || !el) return;
+    reactionTargetId=messageId;
     picker.classList.remove('hidden');
     const rect=el.getBoundingClientRect();
-    const pickerWidth=Math.min(236,window.innerWidth-20);
-    const maxLeft=Math.max(10,Math.min(window.innerWidth-pickerWidth-10,rect.left));
-    picker.style.width=pickerWidth+'px'; picker.style.left=maxLeft+'px'; picker.style.bottom=Math.max(82,window.innerHeight-rect.top+10)+'px';
+    const pickerWidth=Math.min(250,window.innerWidth-24);
+    const maxLeft=Math.max(12,Math.min(window.innerWidth-pickerWidth-12,rect.left));
+    const top=Math.max(12,Math.min(window.innerHeight-62,rect.top-54));
+    picker.style.width=pickerWidth+'px';
+    picker.style.left=maxLeft+'px';
+    picker.style.top=top+'px';
+    picker.style.bottom='auto';
+    if(reactionPickerTimer) clearTimeout(reactionPickerTimer);
+    reactionPickerTimer=setTimeout(closeReactionPicker,4500);
   }
 
   async function reactToMessage(key){
@@ -2961,8 +3045,8 @@ document.querySelector('[data-raaz-nav="feed"]')?.addEventListener("click",()=>{
         else reactions[uid]=emoji;
         tx.update(ref,{reactions});
       });
-      $('messageReactionPicker')?.classList.add('hidden');
-    }catch(e){ showRaazToast?.(e?.message||'Reaction send nahi hua.','error'); }
+      closeReactionPicker();
+    }catch(e){ closeReactionPicker(); showRaazToast?.(e?.message||'Reaction send nahi hua.','error'); }
   }
   const reactionPicker=$('messageReactionPicker');
   reactionPicker?.querySelectorAll('[data-reaction]').forEach(btn=>{
@@ -2971,7 +3055,7 @@ document.querySelector('[data-raaz-nav="feed"]')?.addEventListener("click",()=>{
   });
   document.addEventListener('click',e=>{
     const picker=$('messageReactionPicker');
-    if(picker&&!picker.classList.contains('hidden')&&!picker.contains(e.target)&&!e.target.closest('.v16Message')) picker.classList.add('hidden');
+    if(picker&&!picker.classList.contains('hidden')&&!picker.contains(e.target)&&!e.target.closest('.v16Message')) closeReactionPicker();
   });
 
   // Make the send action include the current reply and avoid the old handler double-send.
@@ -3589,6 +3673,7 @@ document.querySelector('[data-raaz-nav="feed"]')?.addEventListener("click",()=>{
     const a=$('profileAvatar');a.textContent=(d.name||'R').charAt(0).toUpperCase();a.style.backgroundImage=d.photoBase64?`url(${d.photoBase64})`:'none';
     attachFollowStats(u.uid,$('myFollowersCount'),$('myFollowingCount'),myStatsUnsub); await loadProfileContent(u.uid); refreshAnalytics(); showScreen(profileScreen); showRaazBottomNav(true);setActiveRaazNav('profile');
   }
+  window.raazOpenMine = openMine;
 
   async function openOther(uid,data){
     if(!auth.currentUser)return;
@@ -3635,7 +3720,7 @@ document.querySelector('[data-raaz-nav="feed"]')?.addEventListener("click",()=>{
     });
   }
   const oldRenderFeed=renderFeedFromCache;renderFeedFromCache=function(){const r=oldRenderFeed.apply(this,arguments);setTimeout(observeContentViews,250);return r;};window.renderFeedFromCache=renderFeedFromCache;
-  const oldShare=sharePost;sharePost=async function(postId,data){const r=await oldShare(postId,data);const col=data?.videoUrl||data?.videoBase64?'reels':'posts';db.collection(col).doc(postId).update({shareCount:firebase.firestore.FieldValue.increment(1)}).catch(()=>{});return r;};window.sharePost=sharePost;
+  window.sharePost=sharePost;
   setInterval(()=>{ if(document.querySelector('.reelCard[data-reel-id]')) observeContentViews(); },1200);
 
   // Make every person row/profile identity clickable; self remains a normal profile without follow.
@@ -3664,7 +3749,7 @@ document.querySelector('[data-raaz-nav="feed"]')?.addEventListener("click",()=>{
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();deterministicBack();}},true);
 
   // Initial profile hash support and PWA-safe cache bust.
-  const link=document.querySelector('link[rel="stylesheet"]');if(link)link.href='style.css?v=18.0.0';
+  const link=document.querySelector('link[rel="stylesheet"]');if(link)link.href='style.css?v=19.0.0';
   console.info('RAAZ V18 profile + analytics + navigation hardening ready');
 })();
 
@@ -3871,4 +3956,50 @@ document.querySelector('[data-raaz-nav="feed"]')?.addEventListener("click",()=>{
   `;
   document.head.appendChild(style);
   console.info('RAAZ V18 profile message system ready');
+})();
+
+/* RAAZ V20 final professional chat recovery + profile layout polish */
+
+
+/* ================= RAAZ V24 - CLEAN CANONICAL NAVIGATION + PROFILE/CHAT RECOVERY ================= */
+(function installRaazV24(){
+  const $=id=>document.getElementById(id);
+  const safeToast=(m,t='error')=>{try{window.showRaazToast?.(m,t);}catch(_){}};
+
+  // Remove every previously attached direct nav handler by replacing each button once.
+  document.querySelectorAll('#raazBottomNav .raazNav').forEach(oldBtn=>{
+    const btn=oldBtn.cloneNode(true);
+    oldBtn.replaceWith(btn);
+    btn.type='button';
+    btn.addEventListener('click',e=>{
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const name=btn.dataset.raazNav;
+      if(!auth.currentUser||!name)return;
+      try{
+        // Use the V18 router, which is now the only navigation router left.
+        if(typeof raazNavigate==='function') raazNavigate(name);
+      }catch(err){
+        console.error('RAAZ V24 navigation',name,err);
+        safeToast(err?.message||'Screen open nahi ho paayi.','error');
+      }
+    },false);
+  });
+
+  // Ensure the professional profile is always used, including history/back restoration.
+  const oldProfileEntry=window.openMyProfileV15;
+  window.openMyProfileV15=function(){
+    if(typeof window.raazOpenMine==='function')return window.raazOpenMine();
+    return oldProfileEntry?.();
+  };
+
+  // A chat never needs the optional shared parent metadata to display messages.
+  // The user's private chatsList entry is the access anchor used by the Firestore rules.
+  const oldOpenChat=window.openChat||openChat;
+  window.openChat=async function(friendUid,friendName,friendUsername){
+    if(!auth.currentUser||!friendUid||friendUid===auth.currentUser.uid)return;
+    return oldOpenChat(friendUid,friendName,friendUsername);
+  };
+
+  console.info('RAAZ V24 clean canonical navigation + profile/chat recovery ready');
 })();

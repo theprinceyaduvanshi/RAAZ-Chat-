@@ -1,4 +1,5 @@
-// RAAZ V15 service worker - network-first so updated app files appear immediately
+// RAAZ-V24.0 service worker
+// RAAZ-V24.0 service worker - network-first so updated app files appear immediately
 // Add to Home Screen / Install App support remains enabled
 self.addEventListener('install', (event) => {
   self.skipWaiting();

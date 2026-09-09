@@ -1214,7 +1214,7 @@ button:active,.raazNav:active{transform:scale(.97)}
 .profileProHeader{height:62px;display:grid;grid-template-columns:46px 1fr 46px;align-items:center;gap:8px;padding:0 12px;background:#0d0e12;border-bottom:1px solid rgba(255,255,255,.07);position:sticky;top:0;z-index:12}
 .profileProHeader>strong{text-align:center;color:#f5f6f8;font-size:18px}.profileProHeader .iconBtn{width:44px!important;height:44px!important;min-width:44px!important}
 .proDots{font-size:17px;letter-spacing:3px;line-height:1;display:block;margin-left:3px}.profileProBody{max-width:680px;margin:0 auto;padding:24px 16px 110px}
-.profileProTop{display:flex;align-items:center;gap:18px}.profileMineTop{gap:18px}.profileProAvatar{width:92px;height:92px;min-width:92px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at 30% 25%,#ff7a18,#ff3111 38%,#251014 70%);border:3px solid #181a1f;box-shadow:0 0 0 2px rgba(255,73,20,.25);color:#fff;font-size:31px;font-weight:900;background-size:cover;background-position:center}.profileProIdentity{min-width:0}.profileProIdentity h1{margin:0;color:#fff;font-size:23px;line-height:1.15;word-break:break-word}.profileProIdentity p{margin:5px 0 0;color:#8f949e;font-size:14px}.profileProBio{margin:18px 2px 0;color:#e7e9ed;line-height:1.45;font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}.profileProStats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:22px 0 15px;padding:10px 0;border-top:1px solid rgba(255,255,255,.06);border-bottom:1px solid rgba(255,255,255,.06)}.profileProStat{background:transparent;border:0;color:#fff;padding:10px 5px;display:flex;flex-direction:column;align-items:center;gap:4px}.profileProStat b{font-size:18px}.profileProStat span{font-size:12px;color:#898e98}.profileProActions,.profileProMainActions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.proActionBtn{min-height:44px;border:1px solid #2b2e35;background:#17191e;color:#f2f3f5;border-radius:12px;font-weight:800;padding:10px 14px}.proActionBtn.primary{background:linear-gradient(135deg,#ff4b12,#a60808);border-color:transparent}.profileProActionsSecondary{margin-top:8px;display:flex;justify-content:center}.profileProActionsSecondary .viewActionBtn{min-height:44px;border-radius:12px}.profileMessageBtn{background:#17191e!important;border:1px solid #353941!important;color:#fff!important}.profileEditPanel{margin-top:12px;padding:14px;border:1px solid #272a30;background:#111318;border-radius:16px}.editPanelRow{display:flex;flex-direction:column;gap:8px}.editPanelRow+ .editPanelRow{margin-top:14px;padding-top:14px;border-top:1px solid #24272d}.editPanelRow label{font-size:12px;font-weight:800;color:#9ca1aa}.editPanelRow textarea,.editPanelRow input{width:100%;box-sizing:border-box;background:#181a20;color:#fff;border:1px solid #30333a;border-radius:12px;padding:12px;outline:none;resize:vertical}.editPanelBtns{display:flex;gap:8px}.editPanelBtns .proActionBtn{flex:1}.profilePhotoEdit{position:absolute;right:-1px;bottom:-1px;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#ff4a12;border:2px solid #090a0c;color:#fff}.profilePhotoEdit svg{width:16px;height:16px}.avatarWrapper{position:relative;width:92px;height:92px;flex:none}.profileDashboard{margin:20px 0;border:1px solid #272a30;border-radius:17px;background:linear-gradient(145deg,#121419,#0f1013);padding:14px}.profileDashHead{display:flex;align-items:center;justify-content:space-between;gap:12px}.profileDashHead strong{display:block;color:#fff;font-size:15px}.profileDashHead span{display:block;color:#7f848d;font-size:11px;margin-top:3px}.analyticsRefresh{border:1px solid #30343b;background:#191b20;color:#dfe2e7;border-radius:10px;padding:8px 10px;font-size:11px;font-weight:800}.analyticsKpiGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:12px}.analyticsKpiGrid>div{background:#17191e;border:1px solid rgba(255,255,255,.05);border-radius:13px;padding:11px 7px;text-align:center}.analyticsKpiGrid b{display:block;color:#fff;font-size:18px}.analyticsKpiGrid span{display:block;color:#7f848d;font-size:10px;margin-top:3px}.profileProTabs{display:grid;grid-template-columns:1fr 1fr;margin-top:18px;border-bottom:1px solid #272a2f}.profileProTab{height:46px;border:0;background:transparent;color:#7f848d;font-weight:900;border-bottom:2px solid transparent}.profileProTab.active{color:#fff;border-bottom-color:#ff4b12}.profileContentGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;margin-top:3px}.profileGridItem{position:relative;aspect-ratio:1/1;background:#13151a;overflow:hidden;cursor:pointer}.profileGridItem img,.profileGridItem video{width:100%;height:100%;object-fit:cover;display:block}.profileGridPlaceholder{width:100%;height:100%;display:grid;place-items:center;padding:14px;box-sizing:border-box;color:#dfe2e7;font-size:12px;font-weight:700;text-align:center;overflow:hidden}.profileGridMeta{position:absolute;left:5px;right:5px;bottom:5px;display:flex;gap:4px;flex-wrap:wrap}.profileGridMeta span{background:rgba(0,0,0,.72);color:#fff;border-radius:7px;padding:3px 5px;font-size:9px}.profileContentEmpty{padding:50px 20px;text-align:center;color:#777d87}.profileUtilityLinks{display:none}
+.profileProTop{display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:18px!important;width:100%;box-sizing:border-box}.profileMineTop{gap:18px!important}.profileMineTop .avatarWrapper{margin:0!important;flex:0 0 auto}.profileMineTop .profileProIdentity{flex:0 1 auto;min-width:0;max-width:calc(100% - 110px)}.profileProAvatar{width:92px;height:92px;min-width:92px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at 30% 25%,#ff7a18,#ff3111 38%,#251014 70%);border:3px solid #181a1f;box-shadow:0 0 0 2px rgba(255,73,20,.25);color:#fff;font-size:31px;font-weight:900;background-size:cover;background-position:center}.profileProIdentity{min-width:0}.profileProIdentity h1{margin:0;color:#fff;font-size:23px;line-height:1.15;word-break:break-word}.profileProIdentity p{margin:5px 0 0;color:#8f949e;font-size:14px}.profileProBio{margin:18px 2px 0;color:#e7e9ed;line-height:1.45;font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}.profileProStats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:22px 0 15px;padding:10px 0;border-top:1px solid rgba(255,255,255,.06);border-bottom:1px solid rgba(255,255,255,.06)}.profileProStat{background:transparent;border:0;color:#fff;padding:10px 5px;display:flex;flex-direction:column;align-items:center;gap:4px}.profileProStat b{font-size:18px}.profileProStat span{font-size:12px;color:#898e98}.profileProActions,.profileProMainActions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.proActionBtn{min-height:44px;border:1px solid #2b2e35;background:#17191e;color:#f2f3f5;border-radius:12px;font-weight:800;padding:10px 14px}.proActionBtn.primary{background:linear-gradient(135deg,#ff4b12,#a60808);border-color:transparent}.profileProActionsSecondary{margin-top:8px;display:flex;justify-content:center}.profileProActionsSecondary .viewActionBtn{min-height:44px;border-radius:12px}.profileMessageBtn{background:#17191e!important;border:1px solid #353941!important;color:#fff!important}.profileEditPanel{margin-top:12px;padding:14px;border:1px solid #272a30;background:#111318;border-radius:16px}.editPanelRow{display:flex;flex-direction:column;gap:8px}.editPanelRow+ .editPanelRow{margin-top:14px;padding-top:14px;border-top:1px solid #24272d}.editPanelRow label{font-size:12px;font-weight:800;color:#9ca1aa}.editPanelRow textarea,.editPanelRow input{width:100%;box-sizing:border-box;background:#181a20;color:#fff;border:1px solid #30333a;border-radius:12px;padding:12px;outline:none;resize:vertical}.editPanelBtns{display:flex;gap:8px}.editPanelBtns .proActionBtn{flex:1}.profilePhotoEdit{position:absolute;right:-1px;bottom:-1px;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#ff4a12;border:2px solid #090a0c;color:#fff}.profilePhotoEdit svg{width:16px;height:16px}.avatarWrapper{position:relative;width:92px;height:92px;flex:none}.profileDashboard{margin:20px 0;border:1px solid #272a30;border-radius:17px;background:linear-gradient(145deg,#121419,#0f1013);padding:14px}.profileDashHead{display:flex;align-items:center;justify-content:space-between;gap:12px}.profileDashHead strong{display:block;color:#fff;font-size:15px}.profileDashHead span{display:block;color:#7f848d;font-size:11px;margin-top:3px}.analyticsRefresh{border:1px solid #30343b;background:#191b20;color:#dfe2e7;border-radius:10px;padding:8px 10px;font-size:11px;font-weight:800}.analyticsKpiGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:12px}.analyticsKpiGrid>div{background:#17191e;border:1px solid rgba(255,255,255,.05);border-radius:13px;padding:11px 7px;text-align:center}.analyticsKpiGrid b{display:block;color:#fff;font-size:18px}.analyticsKpiGrid span{display:block;color:#7f848d;font-size:10px;margin-top:3px}.profileProTabs{display:grid;grid-template-columns:1fr 1fr;margin-top:18px;border-bottom:1px solid #272a2f}.profileProTab{height:46px;border:0;background:transparent;color:#7f848d;font-weight:900;border-bottom:2px solid transparent}.profileProTab.active{color:#fff;border-bottom-color:#ff4b12}.profileContentGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;margin-top:3px}.profileGridItem{position:relative;aspect-ratio:1/1;background:#13151a;overflow:hidden;cursor:pointer}.profileGridItem img,.profileGridItem video{width:100%;height:100%;object-fit:cover;display:block}.profileGridPlaceholder{width:100%;height:100%;display:grid;place-items:center;padding:14px;box-sizing:border-box;color:#dfe2e7;font-size:12px;font-weight:700;text-align:center;overflow:hidden}.profileGridMeta{position:absolute;left:5px;right:5px;bottom:5px;display:flex;gap:4px;flex-wrap:wrap}.profileGridMeta span{background:rgba(0,0,0,.72);color:#fff;border-radius:7px;padding:3px 5px;font-size:9px}.profileContentEmpty{padding:50px 20px;text-align:center;color:#777d87}.profileUtilityLinks{display:none}
 
 /* Remove anonymous text/grid collisions from app drawer and create sheet. */
 .appMenuSheet{padding:14px 14px calc(12px + env(safe-area-inset-bottom))!important}.appMenuSheet .menuSheetBtn{display:flex!important;align-items:center!important;gap:12px!important;min-height:64px!important;padding:10px 12px!important;margin-bottom:8px!important;box-sizing:border-box!important}.appDrawerItem .drawerIcon{width:38px;height:38px;min-width:38px;border-radius:11px;display:grid;place-items:center;background:linear-gradient(145deg,#ff4b12,#9a0d08);color:#fff;font-size:12px;font-weight:900;letter-spacing:.4px}.appDrawerItem .drawerText{flex:1;min-width:0}.appDrawerItem .drawerText strong,.appDrawerItem .drawerText small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.appDrawerItem .drawerText strong{color:#f3f4f6;font-size:15px}.appDrawerItem .drawerText small{color:#7f848d;font-size:11px;margin-top:4px}.appDrawerItem .drawerArrow{width:20px;text-align:center;color:#858a94;font-size:23px;line-height:1;flex:none}
@@ -1250,3 +1250,124 @@ button:active,.raazNav:active{transform:scale(.97)}
 @media(max-width:520px){.appMenuSheet .appDrawerItem{grid-template-columns:40px minmax(0,1fr) 20px!important;min-height:66px!important}.createActionSheet .createActionItem{grid-template-columns:50px minmax(0,1fr)!important;min-height:72px!important}.createActionSheet .createActionIcon{width:50px!important;height:50px!important;min-width:50px!important}}
 /* V17.1 — only requested chat/profile/QR polish */
 .settingsQrCard{display:flex;align-items:center;gap:16px;padding:16px}.settingsQrBox{width:180px;min-width:180px;height:180px;background:#fff;border-radius:14px;display:grid;place-items:center;overflow:hidden}.settingsQrBox img,.settingsQrBox canvas{max-width:100%;height:auto!important}.settingsQrText{display:flex;flex-direction:column;gap:7px;min-width:0}.settingsQrText strong{color:#fff;font-size:16px}.settingsQrText span{color:#858b95;font-size:12px;line-height:1.45}.settingsQrText .primaryAction{align-self:flex-start;margin-top:4px}.profileProActionsSecondary{display:flex!important;gap:8px;flex-wrap:wrap;justify-content:center}.profileProActionsSecondary .viewActionBtn{flex:1;min-width:150px}.profileProActionsSecondary .linkBtn{width:auto;padding:8px 12px}@media(max-width:520px){.settingsQrCard{flex-direction:column;align-items:center;text-align:center}.settingsQrText .primaryAction{align-self:center}.settingsQrBox{width:160px;min-width:160px;height:160px}.profileProActionsSecondary .viewActionBtn{min-width:0}}
+
+
+/* =========================================================
+   RAAZ V18.2 CHAT STABILITY
+   Header/identity stays fixed while only the message list scrolls.
+   Reaction picker is hidden until a message is double-tapped.
+   ========================================================= */
+#chatScreen {
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+#chatScreen > .chatHeader {
+  position: relative !important;
+  top: auto !important;
+  flex: 0 0 auto !important;
+  z-index: 50 !important;
+  min-height: 62px !important;
+}
+#chatScreen > .chatHeader .friendInfo {
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  overflow: hidden !important;
+}
+#chatScreen > .chatHeader #friendNameDisplay {
+  display: block !important;
+  max-width: 100% !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+#chatScreen > .chatHeader #friendStatus {
+  display: block !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+#chatScreen > .chatBody {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  position: relative !important;
+}
+#chatScreen > .chatTypingIndicator {
+  flex: 0 0 auto !important;
+}
+#chatScreen > .inputBar {
+  flex: 0 0 auto !important;
+  position: relative !important;
+  z-index: 40 !important;
+}
+#messageReactionPicker.hidden {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+#messageReactionPicker:not(.hidden) {
+  display: grid !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+
+
+/* ================= RAAZ V19 PROFESSIONAL CHAT HARDENING ================= */
+.chatLoadingState,.chatErrorState{padding:28px 18px!important;text-align:center!important;line-height:1.55!important;color:#8f949e!important}
+.chatErrorState small{display:block;margin:8px auto 14px;max-width:320px;overflow-wrap:anywhere;font-size:11px;color:#777d87}
+.chatRetryBtn{display:inline-flex!important;align-items:center;justify-content:center;min-height:38px;padding:0 16px;border:1px solid #3b3f47;border-radius:12px;background:#17191e;color:#fff;font-weight:700;cursor:pointer}
+#chatScreen > .chatHeader{padding-top:max(8px,env(safe-area-inset-top))!important;min-height:62px!important;box-sizing:border-box!important}
+#chatScreen > .chatBody{overscroll-behavior:contain!important;-webkit-overflow-scrolling:touch!important}
+#chatScreen > .inputBar{padding-bottom:max(8px,env(safe-area-inset-bottom))!important;box-sizing:border-box!important}
+#friendNameDisplay{min-width:0!important;max-width:calc(100vw - 145px)!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+#friendStatus{min-width:0!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+.messageReactionPicker.hidden{display:none!important;visibility:hidden!important;pointer-events:none!important}
+.messageReactionPicker:not(.hidden){display:grid!important;visibility:visible!important;pointer-events:auto!important}
+
+
+/* ================= RAAZ V20 FINAL PROFESSIONAL POLISH ================= */
+.chatHeader .friendInfo{min-width:0!important;flex:1 1 auto!important;overflow:hidden!important}
+.chatHeader #friendNameDisplay{display:block!important;max-width:100%!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;font-weight:800!important}
+.chatHeader #friendStatus{display:block!important;max-width:100%!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+.chatLoadingState{min-height:120px;display:grid;place-items:center;text-align:center}
+.chatErrorState{min-height:180px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:20px}
+.chatRetryBtn{min-height:42px;padding:0 18px;border-radius:12px;border:1px solid #3a3d45;background:#191b20;color:#fff;font-weight:800}
+@media(max-width:520px){.profileProTop{gap:14px!important}.profileProAvatar,.avatarWrapper{width:82px!important;height:82px!important;min-width:82px!important}.profileMineTop .profileProIdentity{max-width:calc(100% - 96px)!important}.profileProIdentity h1{font-size:21px!important}}
+
+
+/* ================= RAAZ V21 PROFESSIONAL PROFILE / NAV OVERRIDES ================= */
+.profileMineTop{display:grid!important;grid-template-columns:82px minmax(0,1fr)!important;align-items:center!important;justify-content:start!important;column-gap:16px!important;width:100%!important}
+.profileMineTop .avatarWrapper{margin:0!important;width:82px!important;height:82px!important;flex:none!important}
+.profileMineTop .profileProIdentity{min-width:0!important;max-width:none!important;overflow:hidden!important}
+.profileMineTop .profileProIdentity h1,.profileMineTop .profileProIdentity p{overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+.profileProTop:not(.profileMineTop){display:grid!important;grid-template-columns:82px minmax(0,1fr)!important;align-items:center!important;column-gap:16px!important}
+.profileProTop:not(.profileMineTop) .profileProIdentity{min-width:0!important;overflow:hidden!important}
+.profileProIdentity h1{letter-spacing:-.2px!important}
+.profileProIdentity p{line-height:1.25!important}
+#exploreScreen .featureHeader,#reelsScreen .featureHeader{position:sticky!important;top:0!important;z-index:20!important;backdrop-filter:blur(14px)!important}
+@media(max-width:520px){.profileMineTop,.profileProTop:not(.profileMineTop){grid-template-columns:74px minmax(0,1fr)!important;column-gap:14px!important}.profileMineTop .avatarWrapper,.profileProTop:not(.profileMineTop) .profileProAvatar{width:74px!important;height:74px!important;min-width:74px!important}.profileProIdentity h1{font-size:20px!important}}
+
+
+/* ================= RAAZ V22 FINAL MOBILE POLISH ================= */
+.profileMineTop{display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:18px!important;width:100%!important;}
+.profileMineTop .profileAvatar,.profileMineTop .profileMineAvatar{margin:0!important;flex:0 0 auto!important;}
+.profileMineTop .profileIdentity{min-width:0!important;flex:1 1 auto!important;text-align:left!important;}
+.profileMineTop .profileIdentity h1,.profileMineTop .profileName{white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.raazFeatureScreen{position:relative!important;z-index:2!important;background:var(--raaz-bg,#0d0d0f)!important;}
+.chatErrorState small{display:block!important;margin:8px auto 14px!important;max-width:92%!important;word-break:break-word!important;}
+.chatRetryBtn{padding:10px 16px!important;border-radius:12px!important;border:1px solid #3a3d45!important;background:#181a1f!important;color:#fff!important;font-weight:700!important;}
+@media(max-width:520px){.profileMineTop{gap:14px!important}.profileMineTop .profileIdentity h1,.profileMineTop .profileName{font-size:20px!important}.profileMineTop .profileAvatar,.profileMineTop .profileMineAvatar{width:92px!important;height:92px!important;min-width:92px!important;}}
+
+
+/* ================= RAAZ V23 FINAL UI/LIFECYCLE HARDENING ================= */
+.screen.hidden{display:none!important;visibility:hidden!important;pointer-events:none!important;}
+.raazFeatureScreen{z-index:auto!important;}
+#raazBottomNav{z-index:999!important;}
+#exploreScreen,#reelsScreen,#groupsScreen,#notesScreen,#settingsScreen,#gamesScreen{position:fixed!important;inset:0!important;width:100%!important;height:100dvh!important;max-height:100dvh!important;overflow-y:auto!important;overflow-x:hidden!important;padding-bottom:100px!important;background:var(--raaz-bg,#0d0d0f)!important;}
+#reelsScreen .reelsList{height:calc(100dvh - 62px)!important;min-height:0!important;}
+#reelsScreen .reelCard{height:calc(100dvh - 62px)!important;min-height:0!important;}
+#reelsScreen .featureHeader{position:sticky!important;top:0!important;z-index:30!important;}
